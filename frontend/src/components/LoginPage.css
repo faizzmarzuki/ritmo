@@ -1,0 +1,168 @@
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--neon) 8%, transparent) 0%, transparent 60%),
+    radial-gradient(1000px 500px at 110% 110%, color-mix(in srgb, var(--neon) 5%, transparent) 0%, transparent 55%),
+    var(--background);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.brand-lockup {
+  height: 44px;
+  width: auto;
+  display: block;
+  margin: 0 auto 12px;
+  color: var(--foreground);
+}
+
+.brand p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  margin: 0;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+}
+
+label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 6px;
+}
+
+input {
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  color: var(--foreground);
+  font-size: 14px;
+  padding: 11px 14px;
+  margin-bottom: 16px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input::placeholder {
+  color: var(--muted-foreground);
+}
+
+input:focus {
+  border-color: var(--neon);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--neon) 18%, transparent);
+}
+
+.error {
+  color: var(--destructive);
+  font-size: 13px;
+  margin: -6px 0 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease, background 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.08);
+}
+
+.btn:active {
+  transform: scale(0.99);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  margin-top: 4px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.social-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-apple {
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid var(--border);
+}
+
+.btn-google {
+  background: #ffffff;
+  color: #1f2328;
+}
+
+.signup-hint {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  margin: 24px 0 0;
+}
+
+.signup-hint a {
+  color: var(--neon);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.signup-hint a:hover {
+  text-decoration: underline;
+}
+
+.theme-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}

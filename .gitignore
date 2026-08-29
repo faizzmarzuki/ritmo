@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.log
+.DS_Store
+.claude/
+.vscode/
+.idea
+
+# secrets & local data — never commit
+backend/.env
+backend/data/
+*.local
+.vite/
