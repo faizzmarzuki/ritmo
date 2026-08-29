@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { Camera, Loader2, LogOut, RefreshCw, Trash2, UserRound } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Camera, KeyRound, Loader2, LogOut, RefreshCw, Trash2, UserRound, X } from 'lucide-react'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -280,7 +281,6 @@ export function HealthCard() {
 export function GarminCard() {
   const { data, refetch } = useApi(() => api.connections(), [], ['connection', 'sync'])
   const [creds, setCreds] = useState({ email: '', password: '' })
-  const [showForm, setShowForm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -297,14 +297,7 @@ export function GarminCard() {
         window.location.href = url
         return
       }
-      // connect mode: use server-side credentials if present, else show the form
-      const info = await api.connectGarmin()
-      if (info.needsCredentials && !creds.email) {
-        setShowForm(true)
-        return
-      }
-      await api.connectGarminCredentials(creds.email || undefined, creds.password || undefined)
-      setShowForm(false)
+      await api.connectGarminCredentials(creds.email, creds.password)
       setCreds({ email: '', password: '' })
       refetch()
     } catch (err) {
@@ -376,20 +369,24 @@ export function GarminCard() {
                 Disconnect
               </Button>
             </div>
-          ) : (
+          ) : serverMode === 'official' ? (
             <Button size="sm" className="shrink-0" disabled={busy || !configured} onClick={connect}>
               {busy ? 'Connecting…' : 'Connect'}
             </Button>
-          )}
+          ) : null}
         </div>
 
-        {showForm && !garmin.connected && (
+        {serverMode === 'connect' && !garmin.connected && (
           <form
             onSubmit={(e) => { e.preventDefault(); connect() }}
             className="space-y-2 rounded-lg border p-3"
           >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">Your Garmin account</p>
+            </div>
             <p className="text-muted-foreground text-[11px]">
-              Enter your Garmin Connect login. It is sent only to your own local backend.
+              Sign in with your own Garmin Connect account. Your details are stored encrypted
+              in your local backend and used only to sync your data.
             </p>
             <Input
               type="email"
@@ -406,15 +403,14 @@ export function GarminCard() {
               autoComplete="off"
             />
             <Button type="submit" size="sm" disabled={busy || !creds.email || !creds.password}>
-              {busy ? 'Signing in…' : 'Sign in to Garmin'}
+              {busy ? 'Signing in…' : 'Connect Garmin'}
             </Button>
           </form>
         )}
 
         {!configured && (
           <p className="text-muted-foreground text-[10px]">
-            The backend has no Garmin credentials yet — set GARMIN_EMAIL / GARMIN_PASSWORD
-            in server/.env (or use the form after clicking Connect).
+            Garmin is disabled on this server (GARMIN_MODE=off, or official mode without API credentials).
           </p>
         )}
         {garmin.lastError && (
@@ -430,9 +426,20 @@ export function SpotifyCard() {
   const { data, refetch } = useApi(() => api.connections(), [], ['connection'])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const { keys, busy: keysBusy, message: keysMessage, saveKeys } = useApiKeys()
+  const [creds, setCreds] = useState({ clientId: '', clientSecret: '' })
 
   const sp = data?.spotify ?? { connected: false }
   const configured = data?.providers?.spotify?.configured
+  const ownApp = keys['spotify.clientId']?.source === 'saved' || keys['spotify.clientSecret']?.source === 'saved'
+
+  async function saveCreds() {
+    const ok = await saveKeys({
+      'spotify.clientId': creds.clientId.trim(),
+      'spotify.clientSecret': creds.clientSecret.trim(),
+    }, 'Saved — you can connect now.')
+    if (ok) setCreds({ clientId: '', clientSecret: '' })
+  }
 
   async function connect() {
     setError('')
@@ -496,14 +503,177 @@ export function SpotifyCard() {
             </Button>
           )}
         </div>
-        {!configured && (
-          <p className="text-muted-foreground text-[10px]">
-            Set SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET in server/.env first — create the app at
-            developer.spotify.com/dashboard with redirect URI http://127.0.0.1:4000/api/auth/spotify/callback.
-          </p>
+        {(!configured || ownApp) && (
+          <div className="space-y-2 rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">Your Spotify app</p>
+              <span className="text-muted-foreground text-[10px]">
+                {ownApp ? `Your app ${keys['spotify.clientId']?.preview ?? ''}` : keyStatusText(keys['spotify.clientId'])}
+              </span>
+            </div>
+            <p className="text-muted-foreground text-[11px]">
+              Create a free app at developer.spotify.com/dashboard and paste its credentials here
+              (stored encrypted, per account). Add this redirect URI to the app:
+              {' '}<span className="text-foreground break-all">{data?.providers?.spotify?.redirectUri ?? 'loading…'}</span>
+            </p>
+            <Input
+              type="password"
+              autoComplete="off"
+              placeholder="Client ID"
+              value={creds.clientId}
+              onChange={(e) => setCreds((c) => ({ ...c, clientId: e.target.value }))}
+            />
+            <Input
+              type="password"
+              autoComplete="off"
+              placeholder="Client Secret"
+              value={creds.clientSecret}
+              onChange={(e) => setCreds((c) => ({ ...c, clientSecret: e.target.value }))}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                disabled={keysBusy || !creds.clientId.trim() || !creds.clientSecret.trim()}
+                onClick={saveCreds}
+              >
+                {keysBusy ? 'Saving…' : 'Save credentials'}
+              </Button>
+              {ownApp && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={keysBusy}
+                  onClick={() => saveKeys({ 'spotify.clientId': null, 'spotify.clientSecret': null }, 'Removed your Spotify app credentials.')}
+                >
+                  Remove
+                </Button>
+              )}
+              {keysMessage && (
+                <p
+                  className={`text-[10px] ${keysMessage.ok ? 'text-muted-foreground' : 'text-destructive'}`}
+                  role={keysMessage.ok ? undefined : 'alert'}
+                >
+                  {keysMessage.text}
+                </p>
+              )}
+            </div>
+          </div>
         )}
         {sp.lastError && <p className="text-destructive text-[10px]">Last error: {sp.lastError}</p>}
         {error && <p className="text-destructive text-[10px]" role="alert">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Shared state for the per-user API keys (masked statuses + save/clear). */
+function useApiKeys() {
+  const { data, refetch } = useApi(() => api.getApiKeys(), [], ['connection'])
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState(null) // { ok: boolean, text: string }
+
+  async function saveKeys(patch, okText = 'Saved — takes effect immediately.') {
+    setMessage(null)
+    setBusy(true)
+    try {
+      await api.updateApiKeys(patch)
+      setMessage({ ok: true, text: okText })
+      refetch()
+      return true
+    } catch (err) {
+      setMessage({ ok: false, text: err.message })
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { keys: data?.keys ?? {}, busy, message, saveKeys }
+}
+
+function keyStatusText(k) {
+  if (!k?.set) return 'Not set'
+  if (k.source === 'saved') return `Your key ${k.preview}`
+  return `Server default ${k.preview}`
+}
+
+export function AiCoachCard() {
+  const { keys, busy, message, saveKeys } = useApiKeys()
+  const [value, setValue] = useState('')
+
+  const status = keys['vision.apiKey']
+
+  async function save() {
+    if (!value.trim()) return
+    if (await saveKeys({ 'vision.apiKey': value.trim() })) setValue('')
+  }
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-1.5 text-sm">
+          <KeyRound className="size-4" />
+          AI coach &amp; food agent
+        </CardTitle>
+        <CardAction>
+          {status?.set ? (
+            <span className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--neon)]">
+              <span className="size-1.5 rounded-full bg-[var(--neon)]" />
+              Active
+            </span>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">Not set</Badge>
+          )}
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-muted-foreground text-[11px]">
+          Your own OpenAI API key powers the coach chat and food-photo analysis.
+          Create one at platform.openai.com/api-keys — it is stored encrypted in
+          your local backend and never shown again in full.
+        </p>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="key-openai" className="text-sm font-medium">OpenAI API key</label>
+            <span className="text-muted-foreground text-[10px]">{keyStatusText(status)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Input
+              id="key-openai"
+              type="password"
+              autoComplete="off"
+              placeholder="sk-…"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            {status?.source === 'saved' && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                disabled={busy}
+                onClick={() => saveKeys({ 'vision.apiKey': null }, 'Removed your key.')}
+                title="Remove your saved key"
+              >
+                <X />
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button size="sm" disabled={busy || !value.trim()} onClick={save}>
+            {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
+            {busy ? 'Saving…' : 'Save key'}
+          </Button>
+          {message && (
+            <p
+              className={`text-[10px] ${message.ok ? 'text-muted-foreground' : 'text-destructive'}`}
+              role={message.ok ? undefined : 'alert'}
+            >
+              {message.text}
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
@@ -532,43 +702,64 @@ export function SessionCard({ onLogout }) {
   )
 }
 
+const TABS = ['general', 'health', 'integrations']
+
 export default function Settings({ onLogout }) {
-  const { settings } = useSettings()
+  const [params, setParams] = useSearchParams()
+  // ?tab=… deep-links from the You page; ?connect=… is the OAuth return.
+  const requested = params.get('tab')
+  const tab = TABS.includes(requested)
+    ? requested
+    : params.has('connect')
+      ? 'integrations'
+      : 'general'
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 p-4 md:p-6">
-      <header>
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title text-xl md:text-2xl">Settings</h1>
+        <Tabs value={tab} onValueChange={(v) => setParams({ tab: v }, { replace: true })}>
+          <TabsList>
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="health">Health &amp; goals</TabsTrigger>
+            <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="space-y-3">
-          <ProfileCard />
-          <HealthCard />
-        </div>
-        <div className="space-y-3">
-          <PreferencesCard />
-          <GarminCard />
-          <SpotifyCard />
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle className="text-sm">Session</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-muted-foreground text-xs">
-                Signed in as <span className="text-foreground font-medium">{settings.name}</span>.
-                All data is stored in your local backend (server/data).
-              </p>
-              <div>
-                <Button variant="destructive" size="sm" onClick={onLogout}>
-                  <LogOut data-icon="inline-start" />
-                  Log out
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
+      {tab === 'general' && (
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
+            <ProfileCard />
+          </div>
+          <div className="space-y-3">
+            <SessionCard onLogout={onLogout} />
+          </div>
+        </section>
+      )}
+
+      {tab === 'health' && (
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
+            <HealthCard />
+          </div>
+          <div className="space-y-3">
+            <PreferencesCard />
+          </div>
+        </section>
+      )}
+
+      {tab === 'integrations' && (
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
+            <GarminCard />
+            <AiCoachCard />
+          </div>
+          <div className="space-y-3">
+            <SpotifyCard />
+          </div>
+        </section>
+      )}
     </div>
   )
 }

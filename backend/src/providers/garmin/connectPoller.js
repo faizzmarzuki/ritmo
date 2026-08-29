@@ -59,13 +59,33 @@ async function clientFor(userId, { email, password, tokens }, { fresh = false } 
   return gc
 }
 
-function persistTokens(userId, gc, email) {
+/**
+ * OAuth tokens live AES-encrypted in the access_token column; legacy rows kept
+ * them as plaintext JSON in meta.tokens — read those too, they are re-encrypted
+ * (and the plaintext stripped) on the next persistTokens call.
+ */
+function readStoredTokens(conn) {
+  if (conn?.accessToken) {
+    try {
+      return JSON.parse(conn.accessToken)
+    } catch {
+      /* fall through to legacy */
+    }
+  }
+  return conn?.meta?.tokens ?? null
+}
+
+function persistTokens(userId, gc, email, password) {
   try {
     upsertConnection(userId, 'garmin', {
       mode: 'connect',
       externalId: email,
       status: 'connected',
-      meta: { tokens: { oauth1: gc.client?.oauth1Token, oauth2: gc.client?.oauth2Token } },
+      // encrypted by the connections repo; password rides the COALESCEd
+      // token_secret column so passing null keeps the stored one
+      accessToken: JSON.stringify({ oauth1: gc.client?.oauth1Token, oauth2: gc.client?.oauth2Token }),
+      tokenSecret: password || null,
+      meta: { tokens: undefined }, // strip legacy plaintext tokens
     })
   } catch (err) {
     log.warn(`could not persist garmin-connect tokens: ${err.message}`)
@@ -74,8 +94,8 @@ function persistTokens(userId, gc, email) {
 
 /** Connect a user in `connect` mode (called from the connect route). */
 export async function connectUser(userId, email, password) {
-  const gc = await clientFor(userId, { email, password })
-  persistTokens(userId, gc, email)
+  const gc = await clientFor(userId, { email, password }, { fresh: true })
+  persistTokens(userId, gc, email, password)
   return true
 }
 
@@ -127,9 +147,9 @@ async function pollUser(conn) {
   evictClient(conn.user_id)
   const userId = conn.user_id
   const email = conn.external_id || config.garmin.email
-  const password = config.garmin.password
-  const gc = await clientFor(userId, { email, password, tokens: conn.meta?.tokens })
-  persistTokens(userId, gc, email)
+  const password = conn.tokenSecret || config.garmin.password
+  const gc = await clientFor(userId, { email, password, tokens: readStoredTokens(conn) })
+  persistTokens(userId, gc, email, password)
 
   const today = toDateKey()
   const runId = startSyncRun(userId, 'garmin', 'poll')
@@ -270,7 +290,7 @@ async function pollUser(conn) {
 async function pollHrOnly(conn) {
   const userId = conn.user_id
   const email = conn.external_id || config.garmin.email
-  const gc = await clientFor(userId, { email, password: config.garmin.password, tokens: conn.meta?.tokens })
+  const gc = await clientFor(userId, { email, password: conn.tokenSecret || config.garmin.password, tokens: readStoredTokens(conn) })
   const today = toDateKey()
   const hr = await gc.getHeartRate(new Date(`${today}T12:00:00`))
   if (!hr?.heartRateValues) return

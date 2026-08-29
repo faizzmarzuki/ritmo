@@ -85,8 +85,8 @@ export function configWarnings() {
   if (config.tokenEncKey.startsWith('dev-insecure')) w.push('TOKEN_ENC_KEY is not set — provider tokens are weakly encrypted.')
   if (config.garmin.mode === 'off') w.push('Garmin is disabled (GARMIN_MODE=off).')
   else if (!config.garmin.enabled) w.push(`Garmin mode "${config.garmin.mode}" is missing credentials.`)
-  if (!config.vision.enabled) w.push('Food-photo agent is disabled (VISION_API_KEY not set).')
-  if (!config.spotify.enabled) w.push('Spotify is not configured (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).')
+  if (!config.vision.enabled) w.push('Food-photo agent is disabled (no OpenAI API key — Settings → API keys, or VISION_API_KEY).')
+  if (!config.spotify.enabled) w.push('Spotify is not configured (no Client ID/Secret — Settings → API keys, or SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).')
   if (config.publicUrl.includes('localhost')) {
     w.push('PUBLIC_URL points at localhost — Garmin push webhooks cannot reach this server. Use a tunnel for official-mode realtime push.')
   }

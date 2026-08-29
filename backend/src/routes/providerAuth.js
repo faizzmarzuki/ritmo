@@ -6,6 +6,8 @@ import { saveOAuthState, takeOAuthState, upsertConnection, getConnection, delete
 import { requireAuth } from '../auth/middleware.js'
 import { publish } from '../realtime/hub.js'
 import { lastSyncRun } from '../db/repo/ops.js'
+import { spotifyConfiguredFor } from '../services/apiKeys.js'
+import { redirectUri as spotifyRedirectUri } from '../providers/spotify/client.js'
 import { logger } from '../lib/log.js'
 import { all } from '../db/index.js'
 
@@ -27,8 +29,11 @@ router.get('/connections', requireAuth, (req, res) => {
         }
       : { connected: false },
     providers: {
-      garmin: { configured: config.garmin.enabled, mode: config.garmin.mode },
-      spotify: { configured: config.spotify.enabled, demo: config.spotify.demo },
+      // connect mode is always usable: each user signs in with their own
+      // Garmin account via the form; env credentials are just a convenience.
+      garmin: { configured: config.garmin.mode === 'connect' ? true : config.garmin.enabled, mode: config.garmin.mode },
+      // redirectUri is authoritative — the UI shows it so it always matches what we send
+      spotify: { configured: spotifyConfiguredFor(req.user.id), demo: config.spotify.demo, redirectUri: spotifyRedirectUri() },
     },
   })
 })

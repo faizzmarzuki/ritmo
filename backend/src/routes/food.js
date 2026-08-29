@@ -6,6 +6,7 @@ import { createMeal, addFoodItem } from '../db/repo/nutrition.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { config } from '../config.js'
+import { visionEnabledFor } from '../services/apiKeys.js'
 import { one, run } from '../db/index.js'
 import { publish } from '../realtime/hub.js'
 
@@ -20,7 +21,7 @@ router.use(requireAuth)
 
 router.get('/status', (req, res) => {
   res.json({
-    enabled: config.vision.enabled,
+    enabled: visionEnabledFor(req.user.id),
     provider: config.vision.provider,
     model: config.vision.model,
   })

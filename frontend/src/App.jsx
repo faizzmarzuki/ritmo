@@ -5,6 +5,8 @@ import AppShell from './components/AppShell.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import Workouts from './pages/Workouts.jsx'
 import Nutrition from './pages/Nutrition.jsx'
+import You from './pages/You.jsx'
+import Settings from './pages/Settings.jsx'
 import { api } from './lib/api'
 import { stopLive } from './lib/live'
 
@@ -45,11 +47,13 @@ export default function App() {
         element={user ? <Navigate to="/" replace /> : <LoginPage onLogin={setUser} />}
       />
       <Route
-        element={user ? <AppShell user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />}
+        element={user ? <AppShell user={user} /> : <Navigate to="/login" replace />}
       >
         <Route index element={<Dashboard user={user} />} />
         <Route path="workouts" element={<Workouts />} />
         <Route path="nutrition" element={<Nutrition />} />
+        <Route path="you" element={<You user={user} />} />
+        <Route path="settings" element={<Settings onLogout={handleLogout} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

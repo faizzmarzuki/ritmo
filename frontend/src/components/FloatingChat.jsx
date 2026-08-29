@@ -179,7 +179,7 @@ export default function FloatingChat() {
     return (
       <Button
         size="icon"
-        className="fixed right-4 bottom-4 z-50 size-12 rounded-full shadow-lg"
+        className="fixed right-4 bottom-4 z-50 size-12 rounded-full shadow-lg max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
         onClick={() => setOpen(true)}
         title="Ask your health coach"
       >
@@ -189,7 +189,7 @@ export default function FloatingChat() {
   }
 
   return (
-    <div className="bg-card fixed right-4 bottom-4 z-50 flex h-[34rem] w-[22.5rem] flex-col overflow-hidden rounded-xl border shadow-xl">
+    <div className="bg-card fixed right-4 bottom-4 z-50 flex h-[34rem] w-[22.5rem] flex-col overflow-hidden rounded-xl border shadow-xl max-md:inset-x-3 max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-md:h-[min(34rem,70dvh)] max-md:w-auto">
       <div className="flex items-center justify-between px-3.5 py-3">
         <div className="flex items-center gap-2">
           <MessageCircleHeart className="size-4 text-[var(--neon)]" />

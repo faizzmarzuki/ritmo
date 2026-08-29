@@ -1,6 +1,7 @@
 import { config } from '../../config.js'
 import { requestJson, HttpError } from '../../lib/http.js'
 import { getConnection, upsertConnection, markError } from '../../db/repo/connections.js'
+import { spotifyCredsFor } from '../../services/apiKeys.js'
 import { logger } from '../../lib/log.js'
 
 const log = logger('spotify')
@@ -19,12 +20,16 @@ const SCOPES = [
   'user-read-private',
 ].join(' ')
 
-const basicAuth = () =>
-  'Basic ' + Buffer.from(`${config.spotify.clientId}:${config.spotify.clientSecret}`).toString('base64')
+// Each user can bring their own Spotify app credentials (Settings → Integrations),
+// with server/.env as the fallback — so creds are resolved per user, per call.
+const basicAuth = (userId) => {
+  const { clientId, clientSecret } = spotifyCredsFor(userId)
+  return 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+}
 
-export function authorizeUrl(state) {
+export function authorizeUrl(userId, state) {
   const params = new URLSearchParams({
-    client_id: config.spotify.clientId,
+    client_id: spotifyCredsFor(userId).clientId,
     response_type: 'code',
     redirect_uri: redirectUri(),
     scope: SCOPES,
@@ -33,15 +38,15 @@ export function authorizeUrl(state) {
   return `https://accounts.spotify.com/authorize?${params}`
 }
 
-const tokenRequest = (body) =>
+const tokenRequest = (userId, body) =>
   requestJson('https://accounts.spotify.com/api/token', {
     method: 'POST',
-    headers: { Authorization: basicAuth(), 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { Authorization: basicAuth(userId), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(body).toString(),
   })
 
-export const exchangeCode = (code) =>
-  tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri() })
+export const exchangeCode = (userId, code) =>
+  tokenRequest(userId, { grant_type: 'authorization_code', code, redirect_uri: redirectUri() })
 
 export async function accessTokenFor(userId) {
   const conn = getConnection(userId, 'spotify')
@@ -52,7 +57,7 @@ export async function accessTokenFor(userId) {
   if (conn.expires_at && conn.expires_at - now > 300) return conn.accessToken
 
   try {
-    const tok = await tokenRequest({ grant_type: 'refresh_token', refresh_token: conn.refreshToken })
+    const tok = await tokenRequest(userId, { grant_type: 'refresh_token', refresh_token: conn.refreshToken })
     upsertConnection(userId, 'spotify', {
       externalId: conn.external_id,
       accessToken: tok.access_token,
