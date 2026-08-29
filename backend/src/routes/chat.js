@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { config } from '../config.js'
 import { requireAuth } from '../auth/middleware.js'
+import { visionKeyFor } from '../services/apiKeys.js'
 import { buildSummary, buildProgress } from '../services/summary.js'
 import { listMeals } from '../db/repo/nutrition.js'
 import { listFoodMemory } from '../db/repo/foodMemory.js'
@@ -105,7 +106,8 @@ Rules:
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 router.post('/chat', async (req, res) => {
-  if (!config.vision.apiKey) return res.status(503).json({ error: 'Chat needs VISION_API_KEY (OpenAI) in server/.env.' })
+  const apiKey = visionKeyFor(req.user.id)
+  if (!apiKey) return res.status(503).json({ error: 'Chat needs an OpenAI API key — add yours in Settings → Integrations.' })
   const history = Array.isArray(req.body?.messages) ? req.body.messages : []
   // token efficiency: last 8 turns, each capped at 800 chars
   const trimmed = history.slice(-8).map((m) => ({
@@ -137,7 +139,7 @@ router.post('/chat', async (req, res) => {
 
     const resp = await fetch(`${config.vision.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.vision.apiKey}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: config.chat.model,
         messages: [

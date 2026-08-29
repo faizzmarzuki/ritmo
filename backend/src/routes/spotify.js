@@ -3,6 +3,7 @@ import { config } from '../config.js'
 import * as spotify from '../providers/spotify/client.js'
 import { saveOAuthState, takeOAuthState, upsertConnection, deleteConnection } from '../db/repo/connections.js'
 import { requireAuth } from '../auth/middleware.js'
+import { spotifyConfiguredFor } from '../services/apiKeys.js'
 import { publish } from '../realtime/hub.js'
 import { logger } from '../lib/log.js'
 
@@ -29,11 +30,11 @@ const DEMO_PLAYER = {
 
 // ── OAuth ─────────────────────────────────────────────────────────────────────
 router.get('/auth/spotify/connect', requireAuth, (req, res) => {
-  if (!config.spotify.enabled) {
-    return res.status(503).json({ error: 'Spotify is not configured on the server (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).' })
+  if (!spotifyConfiguredFor(req.user.id)) {
+    return res.status(503).json({ error: 'Spotify is not configured — add your Client ID & Secret in Settings → Integrations.' })
   }
   const state = saveOAuthState(req.user.id, 'spotify')
-  res.json({ url: spotify.authorizeUrl(state) })
+  res.json({ url: spotify.authorizeUrl(req.user.id, state) })
 })
 
 router.get('/auth/spotify/callback', async (req, res) => {
@@ -42,7 +43,7 @@ router.get('/auth/spotify/callback', async (req, res) => {
   if (!saved || saved.provider !== 'spotify') return res.redirect(`${config.appUrl}/settings?connect=spotify&status=invalid-state`)
   if (error || !code) return res.redirect(`${config.appUrl}/settings?connect=spotify&status=denied`)
   try {
-    const tok = await spotify.exchangeCode(code)
+    const tok = await spotify.exchangeCode(saved.user_id, code)
     upsertConnection(saved.user_id, 'spotify', {
       accessToken: tok.access_token,
       refreshToken: tok.refresh_token,

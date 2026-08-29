@@ -1,7 +1,9 @@
+import path from 'node:path'
+import fs from 'node:fs'
 import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import { config, configWarnings } from './config.js'
+import { config, configWarnings, ROOT } from './config.js'
 import { migrate } from './db/index.js'
 import { logger } from './lib/log.js'
 import { requireAuth } from './auth/middleware.js'
@@ -14,6 +16,7 @@ import dataRoutes from './routes/data.js'
 import foodRoutes from './routes/food.js'
 import spotifyRoutes from './routes/spotify.js'
 import chatRoutes from './routes/chat.js'
+import settingsRoutes from './routes/settings.js'
 import { startPolling } from './providers/garmin/connectPoller.js'
 
 const log = logger('server')
@@ -58,7 +61,17 @@ app.use('/api/webhooks', webhookRoutes)    // public — providers call these
 app.use('/api/food', foodRoutes)
 app.use('/api', spotifyRoutes)
 app.use('/api', chatRoutes)         // /api/auth/spotify/*, /api/spotify/*
+app.use('/api', settingsRoutes)     // /api/settings/keys
 app.use('/api', dataRoutes)
+
+// ── static frontend (frontend/dist, when built) ───────────────────────────────
+const distDir = path.resolve(ROOT, '../frontend/dist')
+const hasDist = fs.existsSync(path.join(distDir, 'index.html'))
+if (hasDist) {
+  app.use(express.static(distDir))
+  // SPA fallback for client-side routes; API 404s stay JSON.
+  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')))
+}
 
 app.use((req, res) => res.status(404).json({ error: `No route ${req.method} ${req.path}` }))
 

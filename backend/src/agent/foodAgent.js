@@ -5,6 +5,7 @@ import { sha256, randomId } from '../lib/crypto.js'
 import { request } from '../lib/http.js'
 import { saveAnalysis, findAnalysisByHash } from '../db/repo/nutrition.js'
 import { learnFood, listFoodMemory } from '../db/repo/foodMemory.js'
+import { visionKeyFor } from '../services/apiKeys.js'
 import { logger } from '../lib/log.js'
 
 const log = logger('food-agent')
@@ -89,11 +90,11 @@ function extractJson(text) {
 }
 
 // ── provider adapters ─────────────────────────────────────────────────────────
-async function callOpenAI(b64, mime, userMsg) {
+async function callOpenAI(b64, mime, userMsg, apiKey) {
   const res = await request(`${config.vision.baseUrl}/chat/completions`, {
     method: 'POST',
     timeoutMs: 90_000,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.vision.apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: config.vision.model,
       messages: [
@@ -121,13 +122,13 @@ async function callOpenAI(b64, mime, userMsg) {
   }
 }
 
-async function callAnthropic(b64, mime, userMsg) {
+async function callAnthropic(b64, mime, userMsg, apiKey) {
   const res = await request('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     timeoutMs: 90_000,
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': config.vision.apiKey,
+      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
@@ -151,8 +152,8 @@ async function callAnthropic(b64, mime, userMsg) {
   }
 }
 
-async function callGoogle(b64, mime, userMsg) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.vision.model}:generateContent?key=${config.vision.apiKey}`
+async function callGoogle(b64, mime, userMsg, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.vision.model}:generateContent?key=${apiKey}`
   const res = await request(url, {
     method: 'POST',
     timeoutMs: 90_000,
@@ -221,8 +222,9 @@ function sanitize(result) {
  * Caches by image hash so re-uploading the same photo is free.
  */
 export async function analyzeFoodPhoto(userId, imageBuffer, originalMime = 'image/jpeg', hint = '') {
-  if (!config.vision.enabled) {
-    throw Object.assign(new Error('Food agent is not configured. Set VISION_API_KEY in server/.env.'), { status: 503 })
+  const apiKey = visionKeyFor(userId)
+  if (config.vision.provider === 'disabled' || !apiKey) {
+    throw Object.assign(new Error('Food agent is not configured. Add your OpenAI API key in Settings → Integrations.'), { status: 503 })
   }
 
   const memory = listFoodMemory(userId)
@@ -252,7 +254,7 @@ export async function analyzeFoodPhoto(userId, imageBuffer, originalMime = 'imag
   const caller = { openai: callOpenAI, anthropic: callAnthropic, google: callGoogle }[config.vision.provider]
   if (!caller) throw new Error(`Unknown VISION_PROVIDER "${config.vision.provider}"`)
 
-  const { text, tokensIn, tokensOut } = await caller(b64, mime, hintText(hint) + memoryBlock(memory))
+  const { text, tokensIn, tokensOut } = await caller(b64, mime, hintText(hint) + memoryBlock(memory), apiKey)
   const latencyMs = Date.now() - started
   const result = sanitize(extractJson(text))
 
@@ -309,10 +311,14 @@ export async function estimateFoodByName(userId, name) {
   if (config.vision.provider !== 'openai') {
     throw Object.assign(new Error('Name-only estimates need the OpenAI vision provider.'), { status: 501 })
   }
+  const apiKey = visionKeyFor(userId)
+  if (!apiKey) {
+    throw Object.assign(new Error('Food estimates need an OpenAI API key. Add yours in Settings → Integrations.'), { status: 503 })
+  }
   const res = await request(`${config.vision.baseUrl}/chat/completions`, {
     method: 'POST',
     timeoutMs: 60_000,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.vision.apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: config.vision.model,
       messages: [

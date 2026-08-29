@@ -34,6 +34,10 @@ export const api = {
   getSettings: () => call('/api/auth/settings'),
   updateSettings: (patch) => call('/api/auth/settings', { method: 'PATCH', body: patch }),
 
+  // server API keys (OpenAI, Spotify app credentials) — GET returns masked status only
+  getApiKeys: () => call('/api/settings/keys'),
+  updateApiKeys: (patch) => call('/api/settings/keys', { method: 'PUT', body: patch }),
+
   // integrations
   connections: () => call('/api/auth/connections'),
   connectGarmin: () => call('/api/auth/garmin/connect'),          // official: { url } · connect-mode: { needsCredentials }

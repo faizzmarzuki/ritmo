@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Backend for Project Fitness \u2014 Garmin sync, local SQLite storage, realtime SSE, vision food-calorie agent",
+  "description": "Backend for Project Fitness — Garmin sync, local SQLite storage, realtime SSE, vision food-calorie agent",
   "engines": {
     "node": ">=20.11"
   },
@@ -15,7 +15,7 @@
     "agent:test": "node scripts/test-food-agent.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^12.11.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -25,5 +25,9 @@
   "optionalDependencies": {
     "garmin-connect": "^1.6.2",
     "sharp": "^0.33.5"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "sharp@0.33.5": true
   }
 }
