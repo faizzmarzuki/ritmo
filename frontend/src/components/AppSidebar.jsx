@@ -1,4 +1,4 @@
-import { Dumbbell, LayoutDashboard, Nut } from 'lucide-react'
+import { Dumbbell, House, Nut, Settings, UserRound } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSettings } from '@/context/SettingsContext'
 import {
@@ -20,12 +20,13 @@ import SpotifyPlayer from '@/components/SpotifyPlayer'
 import ThemeToggle from '@/components/ThemeToggle'
 
 const items = [
-  { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { title: 'Home', icon: House, path: '/' },
   { title: 'Workouts', icon: Dumbbell, path: '/workouts' },
   { title: 'Nutrition', icon: Nut, path: '/nutrition' },
+  { title: 'You', icon: UserRound, path: '/you' },
 ]
 
-export default function AppSidebar({ user, onOpenAccount, ...props }) {
+export default function AppSidebar({ user, ...props }) {
   const { pathname } = useLocation()
   const { settings } = useSettings()
   const { state, isMobile, openMobile } = useSidebar()
@@ -68,10 +69,9 @@ export default function AppSidebar({ user, onOpenAccount, ...props }) {
 
       <SidebarFooter>
         <div className="flex items-center gap-1 px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-          <button
-            type="button"
-            onClick={onOpenAccount}
-            title="Account & settings"
+          <Link
+            to="/you"
+            title="Your profile & progress"
             className="hover:bg-muted/70 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           >
             {settings.avatar ? (
@@ -91,7 +91,14 @@ export default function AppSidebar({ user, onOpenAccount, ...props }) {
                 via {user?.provider ?? 'email'}
               </p>
             </div>
-          </button>
+          </Link>
+          <Link
+            to="/settings"
+            title="Settings"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/70 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors group-data-[collapsible=icon]:hidden"
+          >
+            <Settings className="size-4" />
+          </Link>
           <ThemeToggle className="shrink-0 group-data-[collapsible=icon]:hidden" />
         </div>
       </SidebarFooter>

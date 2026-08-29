@@ -162,7 +162,7 @@ export default function SpotifyPlayer({ variant = 'sidebar' }) {
 
   if (variant === 'floating') {
     return (
-      <div className="bg-card fixed bottom-4 left-16 z-50 w-64 rounded-xl border p-3 shadow-xl">
+      <div className="bg-card fixed bottom-4 left-16 z-50 w-64 rounded-xl border p-3 shadow-xl max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-md:left-3">
         {body}
       </div>
     )
