@@ -156,24 +156,27 @@
   .page-fwd, .page-back { animation: none; }
 }
 
-/* Hide scrollbars everywhere (vertical and horizontal); scrolling still works. */
+/* Hide scrollbars on touch devices (vertical and horizontal); scrolling still
+   works. Desktop keeps native scrollbars — use .no-scrollbar to opt in there. */
 @layer base {
-  *,
-  html,
-  body {
-    scrollbar-width: none;      /* Firefox */
-    -ms-overflow-style: none;   /* legacy Edge/IE */
-  }
-  *::-webkit-scrollbar,
-  html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-    display: none;              /* Chrome/Safari/WebKit */
+  @media (pointer: coarse) {
+    *,
+    html,
+    body {
+      scrollbar-width: none;      /* Firefox */
+      -ms-overflow-style: none;   /* legacy Edge/IE */
+    }
+    *::-webkit-scrollbar,
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;              /* Chrome/Safari/WebKit */
+    }
   }
 }
 
-/* Explicit opt-in class (used by the sidebar) — same effect. */
+/* Explicit opt-in class (used by the sidebar) — same effect on any device. */
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -199,4 +202,18 @@
     /* No rubber-band chaining to the document behind a nested scroller. */
     overscroll-behavior-y: none;
   }
+}
+
+/* black-translucent (index.html) keeps the standalone viewport stable but renders
+   the iOS status bar text white with no backdrop — illegible over the light theme.
+   Paint a dark scrim behind just the status-bar region in light mode; the height
+   is 0 outside standalone iOS, so this is invisible everywhere else. */
+html:not(.dark) body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: env(safe-area-inset-top, 0px);
+  background: rgb(10 10 10 / 0.82);
+  z-index: 999; /* above nav and dialogs — the status text overlays those too */
+  pointer-events: none;
 }

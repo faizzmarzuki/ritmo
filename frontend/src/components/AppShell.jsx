@@ -84,7 +84,7 @@ export default function AppShell({ user }) {
                 Spotify dock when it's showing (--spotify-dock-h, see SpotifyPlayer). */}
             <div
               key={pathname}
-              className={`${nav.current.anim} pb-[calc(4rem+var(--spotify-dock-h,0px)+env(safe-area-inset-bottom))] md:pb-0`}
+              className={`${nav.current.anim} pb-[calc(4.5rem+var(--spotify-dock-h,0px)+env(safe-area-inset-bottom))] md:pb-0`}
             >
               <Outlet />
             </div>

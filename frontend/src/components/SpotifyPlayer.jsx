@@ -165,7 +165,7 @@ export default function SpotifyPlayer({ variant = 'sidebar' }) {
           ? { background: `linear-gradient(135deg, ${tint(albumRgb, 0.62)}, ${tint(albumRgb, 0.34)})` }
           : undefined}
         className={`fixed inset-x-2 z-40 rounded-xl bg-neutral-800 p-2 text-white shadow-lg shadow-black/30 transition-opacity duration-150 max-md:bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:hidden ${
-          settled ? 'opacity-100' : 'opacity-0'
+          settled ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
         <div className="flex items-center gap-2.5">
@@ -197,18 +197,19 @@ export default function SpotifyPlayer({ variant = 'sidebar' }) {
               ? <Loader2 className="size-4 animate-spin" />
               : <MonitorSpeaker className="size-4" />}
           </button>
-          <button type="button" disabled={busy} onClick={() => control('previous')} className={pillBtn('size-8 active:bg-white/15')}>
+          <button type="button" aria-label="Previous track" disabled={busy} onClick={() => control('previous')} className={pillBtn('size-8 active:bg-white/15')}>
             <SkipBack className="size-4" />
           </button>
           <button
             type="button"
+            aria-label={player?.isPlaying ? 'Pause' : 'Play'}
             disabled={busy}
             onClick={() => control(player?.isPlaying ? 'pause' : 'play')}
             className={pillBtn('size-9 active:bg-white/15')}
           >
             {player?.isPlaying ? <Pause className="size-5" /> : <Play className="size-5" />}
           </button>
-          <button type="button" disabled={busy} onClick={() => control('next')} className={pillBtn('size-8 active:bg-white/15')}>
+          <button type="button" aria-label="Next track" disabled={busy} onClick={() => control('next')} className={pillBtn('size-8 active:bg-white/15')}>
             <SkipForward className="size-4" />
           </button>
         </div>
@@ -216,6 +217,9 @@ export default function SpotifyPlayer({ variant = 'sidebar' }) {
           <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/20">
             <div className="h-full rounded-full bg-white transition-[width]" style={{ width: `${pct}%` }} />
           </div>
+        )}
+        {(error || web.error) && (
+          <p className="mt-1 truncate text-[10px] text-red-300" role="alert">{error || web.error}</p>
         )}
       </div>
     )
@@ -262,19 +266,20 @@ export default function SpotifyPlayer({ variant = 'sidebar' }) {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="size-7 p-0" disabled={busy} onClick={() => control('previous')}>
+          <Button size="sm" variant="ghost" aria-label="Previous track" className="size-7 p-0" disabled={busy} onClick={() => control('previous')}>
             <SkipBack className="size-3.5" />
           </Button>
           <Button
             size="sm"
             variant="outline"
+            aria-label={player?.isPlaying ? 'Pause' : 'Play'}
             className="size-7 rounded-full p-0"
             disabled={busy}
             onClick={() => control(player?.isPlaying ? 'pause' : 'play')}
           >
             {player?.isPlaying ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
           </Button>
-          <Button size="sm" variant="ghost" className="size-7 p-0" disabled={busy} onClick={() => control('next')}>
+          <Button size="sm" variant="ghost" aria-label="Next track" className="size-7 p-0" disabled={busy} onClick={() => control('next')}>
             <SkipForward className="size-3.5" />
           </Button>
         </div>

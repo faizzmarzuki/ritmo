@@ -8,7 +8,7 @@ import { listFoodMemory } from '../db/repo/foodMemory.js'
 import { all } from '../db/index.js'
 import {
   createConversation, getConversation, listConversations, deleteConversation,
-  addChatMessage, listChatMessages, recentThread, recentMessagesAcross,
+  addChatMessage, listChatMessages, recentThread, recentMessagesAcross, findAssistantTurn,
 } from '../db/repo/chat.js'
 import { toDateKey } from '../lib/time.js'
 import { logger } from '../lib/log.js'
@@ -187,22 +187,39 @@ router.post('/chat', async (req, res) => {
 
   let conv = null
   if (req.body?.conversationId) {
+    // Non-string ids would make better-sqlite3 throw synchronously, outside the try below.
+    if (typeof req.body.conversationId !== 'string') return res.status(400).json({ error: 'conversationId must be a string' })
     conv = getConversation(req.user.id, req.body.conversationId)
     if (!conv) return res.status(404).json({ error: 'Conversation not found' })
   }
 
-  // Model context: last 7 stored turns of this thread + the new message.
+  // Model context: last 7 stored exchanges of this thread + the new message.
   const prior = conv ? recentThread(conv.id, 7) : []
   const trimmed = [...prior, { role: 'user', content: message }].map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: String(m.content || '').slice(0, 800),
   }))
 
+  // Retried sends reuse their client-generated turnId, so a turn that was
+  // persisted but whose reply never reached the client (network drop mid-stream)
+  // is replayed instead of run and stored a second time.
+  const turnId = typeof req.body?.turnId === 'string' ? req.body.turnId.slice(0, 64) : null
+
   res.setHeader('Content-Type', 'application/x-ndjson')
   res.setHeader('Cache-Control', 'no-cache')
   const emit = (obj) => res.write(`${JSON.stringify(obj)}\n`)
 
   try {
+    if (turnId) {
+      const prev = findAssistantTurn(req.user.id, turnId)
+      if (prev) {
+        let meta = null
+        try { meta = prev.meta ? JSON.parse(prev.meta) : null } catch { /* keep null */ }
+        emit({ type: 'reply', text: prev.content, ms: meta?.ms ?? null, conversationId: prev.conversation_id, usage: null })
+        return
+      }
+    }
+
     const t0 = Date.now()
     const steps = []
     const step = (label) => {
@@ -259,7 +276,7 @@ router.post('/chat', async (req, res) => {
       conv = { id: createConversation(req.user.id, title) }
     }
     addChatMessage(req.user.id, conv.id, 'user', message)
-    addChatMessage(req.user.id, conv.id, 'assistant', reply, { steps, ms })
+    addChatMessage(req.user.id, conv.id, 'assistant', reply, { steps, ms, ...(turnId ? { turnId } : {}) })
 
     log.info(`reply in ${ms}ms, tokens in/out: ${data.usage?.prompt_tokens}/${data.usage?.completion_tokens}`)
     emit({

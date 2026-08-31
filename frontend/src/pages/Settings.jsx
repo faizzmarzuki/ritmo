@@ -549,6 +549,16 @@ export function SpotifyCard() {
               >
                 {keysBusy ? 'Saving…' : 'Save credentials'}
               </Button>
+              {configured && !ownApp && showCreds && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  onClick={() => setShowCreds(false)}
+                >
+                  Cancel
+                </Button>
+              )}
               {ownApp && (
                 <Button
                   size="sm"

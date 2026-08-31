@@ -207,9 +207,19 @@ export default function Coach() {
   const [error, setError] = useState('')
   const [steps, setSteps] = useState([])
   const scrollRef = useRef(null)
+  // Bumped on every thread switch / new chat; async completions from a
+  // previous thread compare against it and drop their result instead of
+  // overwriting the newly selected thread's state.
+  const genRef = useRef(0)
+  // One id per logical turn, kept across retries of the same content so the
+  // server can replay a reply that was persisted but never reached us.
+  const pendingTurnRef = useRef(null)
 
   const refreshConversations = () =>
-    api.chatConversations().then(setConversations).catch(() => setConversations([]))
+    // On failure keep whatever is already loaded; only the initial load (still
+    // null) falls back to an empty list, so a failed post-send refresh doesn't
+    // make existing conversations vanish.
+    api.chatConversations().then(setConversations).catch(() => setConversations((list) => list ?? []))
 
   useEffect(() => {
     refreshConversations()
@@ -222,11 +232,15 @@ export default function Coach() {
   async function openConversation(id) {
     setHistoryOpen(false)
     if (id === activeId) return
+    const gen = ++genRef.current
     setActiveId(id)
     setError('')
+    setBusy(false) // abandon any in-flight send; its completion is gen-guarded
+    setSteps([])
     setLoadingThread(true)
     try {
       const { messages: msgs } = await api.chatConversation(id)
+      if (gen !== genRef.current) return // user moved on; keep their new thread
       setMessages(msgs.map((m) => ({
         role: m.role,
         content: m.content,
@@ -234,18 +248,23 @@ export default function Coach() {
         ms: m.meta?.ms,
       })))
     } catch (err) {
+      if (gen !== genRef.current) return
       setError(err.message)
       setMessages([])
     } finally {
-      setLoadingThread(false)
+      if (gen === genRef.current) setLoadingThread(false)
     }
   }
 
   function newChat() {
+    genRef.current += 1
     setHistoryOpen(false)
     setActiveId(null)
     setMessages([])
     setError('')
+    setBusy(false)
+    setSteps([])
+    setLoadingThread(false)
   }
 
   async function removeConversation(id) {
@@ -267,22 +286,36 @@ export default function Coach() {
     setMessages((m) => [...m, { role: 'user', content }])
     setBusy(true)
     setSteps([])
+    const gen = genRef.current
+    const pending = pendingTurnRef.current
+    const turnId = pending?.content === content
+      ? pending.turnId
+      : (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`)
+    pendingTurnRef.current = { turnId, content }
     const trail = []
     try {
       const reply = await api.chat(content, activeId, (label) => {
         trail.push(label)
-        setSteps([...trail])
-      })
+        if (gen === genRef.current) setSteps([...trail])
+      }, turnId)
+      if (pendingTurnRef.current?.turnId === turnId) pendingTurnRef.current = null
+      // The reply is saved server-side either way, so the list refresh is
+      // always worthwhile; everything below only applies while the user is
+      // still on the thread this send belongs to.
+      refreshConversations()
+      if (gen !== genRef.current) return
       setMessages((m) => [...m, { role: 'assistant', content: reply.text, steps: trail, ms: reply.ms }])
       if (reply.conversationId && reply.conversationId !== activeId) setActiveId(reply.conversationId)
-      refreshConversations()
     } catch (err) {
+      if (gen !== genRef.current) return
       setError(err.message)
       setMessages((m) => m.slice(0, -1)) // roll back the optimistic user message on failure
       setInput(content)
     } finally {
-      setBusy(false)
-      setSteps([])
+      if (gen === genRef.current) {
+        setBusy(false)
+        setSteps([])
+      }
     }
   }
 

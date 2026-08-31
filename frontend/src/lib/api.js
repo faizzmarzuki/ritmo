@@ -72,13 +72,14 @@ export const api = {
   chatConversation: (id) => call(`/api/chat/conversations/${id}`),
   deleteChatConversation: (id) => call(`/api/chat/conversations/${id}`, { method: 'DELETE' }),
 
-  // NDJSON stream: onStep(label) fires per research step, resolves with { text, ms, conversationId }
-  chat: async (message, conversationId, onStep) => {
+  // NDJSON stream: onStep(label) fires per research step, resolves with { text, ms, conversationId }.
+  // turnId dedupes retries: resending with the same id replays the stored reply.
+  chat: async (message, conversationId, onStep, turnId) => {
     const res = await fetch(`${BASE}/api/chat`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, conversationId }),
+      body: JSON.stringify({ message, conversationId, turnId }),
     })
     if (!res.ok || !res.body) {
       const data = await res.json().catch(() => null)

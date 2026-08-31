@@ -227,9 +227,11 @@ function sanitize(result) {
 export async function analyzeFoodPhoto(userId, imageBuffer, originalMime = 'image/jpeg', hint = '') {
   const apiKey = visionKeyFor(userId)
   if (config.vision.provider === 'disabled' || !apiKey) {
-    const fix = config.vision.provider === 'openai'
-      ? 'Add your OpenAI API key in Settings → Integrations.'
-      : `Set VISION_API_KEY for the "${config.vision.provider}" provider on the server.`
+    const fix = config.vision.provider === 'disabled'
+      ? 'Set VISION_PROVIDER on the server to enable a vision provider.'
+      : config.vision.provider === 'openai'
+        ? 'Add your OpenAI API key in Settings → Integrations.'
+        : `Set VISION_API_KEY for the "${config.vision.provider}" provider on the server.`
     throw Object.assign(new Error(`Food agent is not configured. ${fix}`), { status: 503 })
   }
 

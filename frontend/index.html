@@ -15,7 +15,10 @@
          area below the opaque status bar (402x812) a beat after first paint and
          shifts the whole page. black-translucent makes both signals say full-bleed,
          so the height never changes; the env(safe-area-inset-*) paddings throughout
-         the app then keep content clear of the status bar and home indicator. -->
+         the app then keep content clear of the status bar and home indicator.
+         Tradeoff: iOS renders the status bar text white with no backdrop — fine on
+         the dark theme; index.css paints a dark scrim behind the status-bar region
+         in light mode so the clock/battery stay legible. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Ritmo" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

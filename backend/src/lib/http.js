@@ -41,6 +41,9 @@ export async function request(url, { retries = 3, timeoutMs = 30_000, ...init } 
     } catch (err) {
       clearTimeout(timer)
       if (err instanceof HttpError) throw err
+      // redirect: 'error' rejections are a deliberate refusal to follow, not a
+      // transient failure — retrying can never succeed, so surface immediately.
+      if (/redirect/i.test(err?.message || '') || /redirect/i.test(err?.cause?.message || '')) throw err
       if (attempt >= retries) throw err
       await sleep(2 ** attempt * 500)
       attempt += 1

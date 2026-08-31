@@ -51,7 +51,10 @@ const DEFAULT_NAMES = { strength: 'Gym workout', run: 'Run', ride: 'Ride', swim:
 
 router.post('/activities', (req, res) => {
   const b = req.body || {}
-  const sport = MANUAL_SPORTS.has(b.sport) ? b.sport : 'strength'
+  const sport = b.sport || 'strength'
+  if (!MANUAL_SPORTS.has(sport)) {
+    return res.status(400).json({ error: `sport must be one of: ${[...MANUAL_SPORTS].join(', ')}` })
+  }
   const durationMin = Number(b.durationMin)
   if (!Number.isFinite(durationMin) || durationMin <= 0 || durationMin > 1440) {
     return res.status(400).json({ error: 'durationMin must be 1-1440' })
@@ -59,6 +62,15 @@ router.post('/activities', (req, res) => {
   const dateKey = dateKeyParam(b.date)
   const time = /^\d{2}:\d{2}$/.test(String(b.time || '')) ? b.time : '12:00'
   const startLocal = `${dateKey}T${time}:00`
+  // Round-trip through Date: impossible dates roll over (Feb 30 → Mar 2) and
+  // out-of-range times parse as Invalid Date — reject both instead of storing
+  // a shifted date or crashing on toISOString below.
+  const start = new Date(startLocal)
+  if (Number.isNaN(start.getTime())
+      || start.getDate() !== Number(dateKey.slice(8, 10))
+      || start.getHours() !== Number(time.slice(0, 2))) {
+    return res.status(400).json({ error: `Invalid date or time: ${startLocal}` })
+  }
   const durationS = Math.round(durationMin * 60)
   const distanceM = Math.max(0, Math.min(Number(b.distanceKm) || 0, 500)) * 1000
   const avgHr = Math.round(Number(b.avgHr))
@@ -68,7 +80,7 @@ router.post('/activities', (req, res) => {
     name: String(b.name || '').trim().slice(0, 80) || DEFAULT_NAMES[sport],
     sport,
     sportRaw: null,
-    startTime: new Date(startLocal).toISOString(), // server-local tz — single-user deployment
+    startTime: start.toISOString(), // server-local tz — single-user deployment
     startLocal,
     dateKey,
     timezone: null,

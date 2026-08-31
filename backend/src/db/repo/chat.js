@@ -28,8 +28,10 @@ export const listConversations = (userId, limit = 50) =>
 export const deleteConversation = (userId, id) =>
   run('DELETE FROM chat_conversations WHERE user_id = ? AND id = ?', userId, id)
 
+// %f gives millisecond precision so threads touched within the same second still
+// sort newest-first; the format prefix matches the schema's datetime('now') defaults.
 export const touchConversation = (id) =>
-  run("UPDATE chat_conversations SET updated_at = datetime('now') WHERE id = ?", id)
+  run("UPDATE chat_conversations SET updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?", id)
 
 // ── messages ─────────────────────────────────────────────────────────────────
 export function addChatMessage(userId, conversationId, role, content, meta = null) {
@@ -46,20 +48,30 @@ export function addChatMessage(userId, conversationId, role, content, meta = nul
 export const listChatMessages = (conversationId) =>
   all('SELECT id, role, content, meta, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at, rowid', conversationId)
 
-/** Last N turns of one thread for the model context, oldest first. */
+/** Last N exchanges (2N messages) of one thread for the model context, oldest first. */
 export const recentThread = (conversationId, limit = 8) =>
   all(
     `SELECT role, content FROM (
        SELECT role, content, created_at, rowid FROM chat_messages
        WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
      ) ORDER BY created_at, rowid`,
-    conversationId, limit,
+    conversationId, limit * 2,
   )
 
-/** Recent messages from OTHER conversations — the pool the recall step scores. */
+/** Dedup lookup for retried sends: the assistant reply already stored for a turnId. */
+export const findAssistantTurn = (userId, turnId) =>
+  one(
+    `SELECT conversation_id, content, meta FROM chat_messages
+     WHERE user_id = ? AND role = 'assistant' AND json_extract(meta, '$.turnId') = ?
+     ORDER BY created_at DESC LIMIT 1`,
+    userId, turnId,
+  )
+
+/** Recent messages from OTHER conversations — the pool the recall step scores.
+ * Content is capped at 300 chars to match the recall snippet cap in the route. */
 export const recentMessagesAcross = (userId, excludeConversationId, limit = 400) =>
   all(
-    `SELECT m.role, m.content, m.created_at, c.title
+    `SELECT m.role, SUBSTR(m.content, 1, 300) AS content, m.created_at, c.title
      FROM chat_messages m JOIN chat_conversations c ON c.id = m.conversation_id
      WHERE m.user_id = ? AND m.conversation_id <> ?
      ORDER BY m.created_at DESC LIMIT ?`,

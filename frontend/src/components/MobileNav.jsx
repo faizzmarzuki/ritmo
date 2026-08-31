@@ -91,7 +91,7 @@ export function BottomNav() {
     <nav
       aria-label="Primary"
       className={`from-background via-background/85 fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t to-transparent pt-3 pb-[env(safe-area-inset-bottom)] transition-opacity duration-150 md:hidden ${
-        settled ? 'opacity-100' : 'opacity-0'
+        settled ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
       <div className="flex h-14 items-stretch">

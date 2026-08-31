@@ -20,7 +20,10 @@ function fetchFresh(cacheKey, fetcher) {
   const p = Promise.resolve()
     .then(fetcher)
     .then((result) => {
-      cache.set(cacheKey, result)
+      // Only cache while still the current request: a newer refetch may have
+      // replaced us, or clearApiCache (logout) may have emptied the maps —
+      // writing then would repopulate the cache with stale or prior-user data.
+      if (inflight.get(cacheKey) === p) cache.set(cacheKey, result)
       return result
     })
   inflight.set(cacheKey, p)
