@@ -426,14 +426,16 @@ export default function Workouts() {
   const { settings } = useSettings()
   const { data, refetch } = useApi(() => api.workouts(), [], ['activity', 'sync'], 'workouts')
   const [logOpen, setLogOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   async function removeWorkout(id) {
     if (!window.confirm('Delete this logged workout?')) return
+    setDeleteError('')
     try {
       await api.deleteActivity(id)
       refetch()
-    } catch {
-      /* the next SSE refresh will reconcile */
+    } catch (err) {
+      setDeleteError(err.message) // the next SSE refresh still reconciles the list
     }
   }
 
@@ -462,6 +464,9 @@ export default function Workouts() {
         </Button>
       </header>
       <LogWorkoutSheet open={logOpen} onOpenChange={setLogOpen} onLogged={refetch} />
+      {deleteError && (
+        <p className="text-destructive text-[10px]" role="alert">Delete failed: {deleteError}</p>
+      )}
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StreakCard s={runningStats} />

@@ -30,6 +30,7 @@ router.put('/settings/keys', requireAuth, (req, res) => {
   }
   // nudge cards that depend on provider configuration (e.g. Spotify connect button)
   publish(req.user.id, 'connection', { provider: 'settings', status: 'updated' })
+  res.set('Cache-Control', 'no-store') // credential status must never be cached
   res.json({ keys: keyStatus(req.user.id) })
 })
 

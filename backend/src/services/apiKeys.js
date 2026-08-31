@@ -7,9 +7,10 @@ import { getUserApiKey, setUserApiKey, listUserApiKeys } from '../db/repo/userAp
  * setup can still configure everything in one place.
  */
 const ENV_FALLBACK = {
-  // The saved vision key is an OpenAI key; VISION_API_KEY only backs it when the
-  // server's vision provider actually is OpenAI (otherwise it's an Anthropic/Google key).
-  'vision.apiKey': () => (config.vision.provider === 'openai' ? config.vision.apiKey : ''),
+  // The saved vision key is an OpenAI key; VISION_API_KEY backs it when the
+  // server's vision provider is OpenAI (otherwise it's an Anthropic/Google key),
+  // and OPENAI_API_KEY backs it regardless — chat always needs an OpenAI key.
+  'vision.apiKey': () => (config.vision.provider === 'openai' ? config.vision.apiKey : '') || config.chat.apiKey,
   'spotify.clientId': () => config.spotify.clientId,
   'spotify.clientSecret': () => config.spotify.clientSecret,
 }

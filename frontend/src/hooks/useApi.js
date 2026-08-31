@@ -70,7 +70,12 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
   const refetch = useCallback(async () => {
     try {
       setError(null)
-      setData(await fetchFresh(keyRef.current, () => fetcherRef.current()))
+      const k = keyRef.current
+      const result = await fetchFresh(k, () => fetcherRef.current())
+      // Paint only if this response is still the freshest for the key: an older
+      // request resolving after a newer one (or after logout cleared the cache)
+      // never made it into the cache, so it must not reach the screen either.
+      if (cache.get(k) === result) setData(result)
     } catch (err) {
       setError(err)
     } finally {

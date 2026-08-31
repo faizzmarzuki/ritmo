@@ -370,6 +370,7 @@ export default function Coach() {
           <Button
             type="submit"
             size="icon"
+            aria-label="Send message"
             style={{ margin: 0 }}
             className="size-9 shrink-0 rounded-lg shadow-[0_0_18px_color-mix(in_srgb,var(--neon)_35%,transparent)] disabled:shadow-none"
             disabled={busy || !input.trim()}

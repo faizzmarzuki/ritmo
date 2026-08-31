@@ -147,6 +147,7 @@ router.get('/strength/exercises', (req, res) => res.json(EXERCISES))
  * stimulus, so they start orange instead of red.
  */
 router.get('/strength/recovery', (req, res) => {
+  res.set('Cache-Control', 'no-store') // per-user and time-decaying — never reuse
   const from = toDateKey(new Date(Date.now() - (RECOVERY_HOURS + 24) * 36e5))
   const now = Date.now()
   const muscles = {}

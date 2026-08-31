@@ -59,6 +59,9 @@ export const config = {
 
   chat: {
     model: process.env.CHAT_MODEL || 'gpt-5-mini',
+    // Chat always talks to an OpenAI-compatible endpoint; OPENAI_API_KEY backs it
+    // even when the vision provider is anthropic/google (VISION_API_KEY is theirs).
+    apiKey: process.env.OPENAI_API_KEY || '',
   },
 
   vision: {
@@ -69,7 +72,10 @@ export const config = {
     maxEdge: int(process.env.VISION_MAX_EDGE, 768),
     cache: bool(process.env.VISION_CACHE, true),
     get enabled() {
-      return this.provider !== 'disabled' && Boolean(this.apiKey)
+      // Server-wide credential present. Per-user saved keys can still enable the
+      // agent for individual accounts when this is false (openai provider only).
+      return this.provider !== 'disabled'
+        && Boolean(this.apiKey || (this.provider === 'openai' && config.chat.apiKey))
     },
   },
 }
@@ -93,7 +99,12 @@ export function configWarnings() {
   if (config.tokenEncKey.startsWith('dev-insecure')) w.push('TOKEN_ENC_KEY is not set — provider tokens are weakly encrypted.')
   if (config.garmin.mode === 'off') w.push('Garmin is disabled (GARMIN_MODE=off).')
   else if (!config.garmin.enabled) w.push(`Garmin mode "${config.garmin.mode}" is missing credentials.`)
-  if (!config.vision.enabled) w.push('Food-photo agent is disabled (no OpenAI API key — Settings → Integrations, or VISION_API_KEY).')
+  if (config.vision.provider === 'disabled') w.push('Food-photo agent is disabled (VISION_PROVIDER=disabled).')
+  else if (!config.vision.enabled) {
+    w.push(config.vision.provider === 'openai'
+      ? 'No server-wide OpenAI key (VISION_API_KEY or OPENAI_API_KEY) — each user must add their own in Settings → Integrations.'
+      : `Vision provider "${config.vision.provider}" is missing VISION_API_KEY.`)
+  }
   if (!config.spotify.enabled) w.push('Spotify is not configured (no Client ID/Secret — Settings → Integrations, or SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).')
   if (config.publicUrl.includes('localhost')) {
     w.push('PUBLIC_URL points at localhost — Garmin push webhooks cannot reach this server. Use a tunnel for official-mode realtime push.')
