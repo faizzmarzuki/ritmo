@@ -210,6 +210,10 @@ router.post('/chat', async (req, res) => {
   // persisted but whose reply never reached the client (network drop mid-stream)
   // is replayed instead of run and stored a second time.
   const turnId = typeof req.body?.turnId === 'string' ? req.body.turnId.slice(0, 64) : null
+  // Reservations are per user: turnIds are client-generated, so one user's id
+  // must never block (or replay into) another user's turn. findAssistantTurn is
+  // already user-scoped in SQL.
+  const turnKey = turnId ? `${req.user.id}:${turnId}` : null
 
   res.setHeader('Content-Type', 'application/x-ndjson')
   res.setHeader('Cache-Control', 'no-store')
@@ -225,11 +229,11 @@ router.post('/chat', async (req, res) => {
         emit({ type: 'reply', text: prev.content, ms: meta?.ms ?? null, conversationId: prev.conversation_id, usage: null })
         return
       }
-      if (activeTurns.has(turnId)) {
+      if (activeTurns.has(turnKey)) {
         emit({ type: 'error', error: 'This message is already being processed — wait for it to finish.' })
         return
       }
-      activeTurns.add(turnId)
+      activeTurns.add(turnKey)
       reservedTurn = true
     }
 
@@ -303,7 +307,7 @@ router.post('/chat', async (req, res) => {
     log.error(`chat failed: ${err.message}`)
     emit({ type: 'error', error: err.message })
   } finally {
-    if (reservedTurn) activeTurns.delete(turnId)
+    if (reservedTurn) activeTurns.delete(turnKey)
     res.end()
   }
 })

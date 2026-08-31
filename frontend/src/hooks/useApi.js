@@ -63,11 +63,15 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
   fetcherRef.current = fetcher
   const keyRef = useRef(key)
   keyRef.current = key
+  // Orders this hook's own requests: only the newest one (adopted or refetched)
+  // may publish state, so a stale success, failure, or loading flip is dropped.
+  const reqIdRef = useRef(0)
 
   // Always goes to the network: callers use this after a mutation, so an
   // already-running request may predate the change they just made.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const refetch = useCallback(async () => {
+    const id = ++reqIdRef.current
     try {
       setError(null)
       const k = keyRef.current
@@ -75,11 +79,12 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
       // Paint only if this response is still the freshest for the key: an older
       // request resolving after a newer one (or after logout cleared the cache)
       // never made it into the cache, so it must not reach the screen either.
-      if (cache.get(k) === result) setData(result)
+      // cache.has guards the miss-vs-cached-undefined ambiguity of Map.get.
+      if (id === reqIdRef.current && cache.has(k) && cache.get(k) === result) setData(result)
     } catch (err) {
-      setError(err)
+      if (id === reqIdRef.current) setError(err)
     } finally {
-      setLoading(false)
+      if (id === reqIdRef.current) setLoading(false)
     }
   }, deps)
 
@@ -96,16 +101,21 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
     // Adopt a prefetch that is already on the wire instead of duplicating it.
     const pending = inflight.get(k)
     if (pending) {
+      const id = ++reqIdRef.current
       let alive = true
       pending.then(
         (result) => {
-          if (!alive) return
+          if (!alive || id !== reqIdRef.current) return
           // Same freshness rule as refetch: paint only what actually got cached,
           // so a request outlived by logout (clearApiCache) never reaches state.
-          if (cache.get(k) === result) setData(result)
+          if (cache.has(k) && cache.get(k) === result) setData(result)
           setLoading(false)
         },
-        (err) => alive && (setError(err), setLoading(false)),
+        (err) => {
+          if (!alive || id !== reqIdRef.current) return
+          setError(err)
+          setLoading(false)
+        },
       )
       return () => {
         alive = false
