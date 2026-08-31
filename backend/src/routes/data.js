@@ -14,8 +14,9 @@ import {
 import { listGoals, setGoalDone } from '../db/repo/users.js'
 import {
   replaceStrengthExercises, listStrengthExercises, listRecentStrengthWork,
+  listExerciseLibrary, getExerciseBySlug, getExercisesBySlugs,
 } from '../db/repo/strength.js'
-import { EXERCISES, EXERCISE_MAP, RECOVERY_HOURS } from '../lib/exercises.js'
+import { EXERCISES, EXERCISE_MAP, RECOVERY_HOURS, musclesForSiteTags } from '../lib/exercises.js'
 import { toDateKey } from '../lib/time.js'
 import { publish } from '../realtime/hub.js'
 
@@ -55,9 +56,36 @@ router.post('/activities', (req, res) => {
   if (!MANUAL_SPORTS.has(sport)) {
     return res.status(400).json({ error: `sport must be one of: ${[...MANUAL_SPORTS].join(', ')}` })
   }
-  const durationMin = Number(b.durationMin)
+  // Gym detail first — which machines/exercises, reps per set, rest between
+  // sets — so a missing duration can be estimated from the sets below.
+  // Keys come from either the curated catalog or the scraped exercise library.
+  let cleanedExercises = []
+  if (sport === 'strength' && Array.isArray(b.exercises)) {
+    const candidates = b.exercises.slice(0, 30).map((ex) => ({
+      key: String(ex?.key || '').slice(0, 120),
+      restS: Math.max(0, Math.min(Math.round(Number(ex?.restS) || 0), 3600)) || null,
+      reps: (Array.isArray(ex?.reps) ? ex.reps : [])
+        .map((r) => Math.round(Number(r)))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 500)
+        .slice(0, 30),
+    })).filter((ex) => ex.key && ex.reps.length > 0)
+    const libSlugs = new Set(
+      getExercisesBySlugs([...new Set(candidates.map((c) => c.key).filter((k) => !EXERCISE_MAP.has(k)))])
+        .map((e) => e.slug),
+    )
+    cleanedExercises = candidates.filter((ex) => EXERCISE_MAP.has(ex.key) || libSlugs.has(ex.key))
+  }
+
+  let durationMin = Number(b.durationMin)
   if (!Number.isFinite(durationMin) || durationMin <= 0 || durationMin > 1440) {
-    return res.status(400).json({ error: 'durationMin must be 1-1440' })
+    if (sport !== 'strength') {
+      return res.status(400).json({ error: 'durationMin must be 1-1440' })
+    }
+    // Estimate: ~45s of work per set plus the logged rest, else a plain 45 min.
+    const estimateS = cleanedExercises.reduce(
+      (s, ex) => s + ex.reps.length * (45 + (ex.restS ?? 60)), 0,
+    )
+    durationMin = estimateS > 0 ? Math.min(1440, Math.max(15, Math.round(estimateS / 60))) : 45
   }
   const dateKey = dateKeyParam(b.date)
   const time = /^\d{2}:\d{2}$/.test(String(b.time || '')) ? b.time : '12:00'
@@ -95,18 +123,7 @@ router.post('/activities', (req, res) => {
     avgPaceSKm: distanceM > 0 ? durationS / (distanceM / 1000) : null,
     steps: null,
   })
-  // Optional gym detail: which machines/exercises, reps per set, rest between sets.
-  if (sport === 'strength' && Array.isArray(b.exercises)) {
-    const cleaned = b.exercises.slice(0, 30).map((ex) => ({
-      key: EXERCISE_MAP.has(ex?.key) ? ex.key : null,
-      restS: Math.max(0, Math.min(Math.round(Number(ex?.restS) || 0), 3600)) || null,
-      reps: (Array.isArray(ex?.reps) ? ex.reps : [])
-        .map((r) => Math.round(Number(r)))
-        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 500)
-        .slice(0, 30),
-    })).filter((ex) => ex.key && ex.reps.length > 0)
-    if (cleaned.length) replaceStrengthExercises(req.user.id, id, cleaned)
-  }
+  if (cleanedExercises.length) replaceStrengthExercises(req.user.id, id, cleanedExercises)
   publish(req.user.id, 'activity', { id })
   res.status(201).json({ id })
 })
@@ -127,7 +144,7 @@ router.get('/activities/:id', (req, res) => {
     ...act,
     exercises: listStrengthExercises(req.user.id, act.id).map((ex) => ({
       ...ex,
-      label: EXERCISE_MAP.get(ex.key)?.label || ex.key,
+      label: EXERCISE_MAP.get(ex.key)?.label || getExerciseBySlug(ex.key)?.name || ex.key,
     })),
     streams: {
       heartrate: getStream(act.id, 'heartrate'),
@@ -140,6 +157,23 @@ router.get('/activities/:id', (req, res) => {
 // ── strength / muscle recovery ───────────────────────────────────────────────
 router.get('/strength/exercises', (req, res) => res.json(EXERCISES))
 
+/** Scraped exercise library (name + muscle/equipment tags) for the log picker. */
+router.get('/exercises', (req, res) => {
+  res.set('Cache-Control', 'private, max-age=3600')
+  res.json(listExerciseLibrary())
+})
+
+/** Demo GIF for one library exercise, served from data/exercise-gifs. */
+router.get('/exercise-gifs/:slug', (req, res) => {
+  const slug = path.basename(req.params.slug).replace(/\.gif$/i, '')
+  const ex = getExerciseBySlug(slug)
+  if (!ex?.gif_path) return res.status(404).json({ error: 'Not found' })
+  res.set('Cache-Control', 'private, max-age=86400')
+  res.sendFile(path.join(config.dataDir, 'exercise-gifs', path.basename(ex.gif_path)), (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
+  })
+})
+
 /**
  * GET /api/strength/recovery — freshness per muscle group for the anatomy card.
  * intensity 1 = trained just now (renders red) fading linearly to 0 over
@@ -151,8 +185,14 @@ router.get('/strength/recovery', (req, res) => {
   const from = toDateKey(new Date(Date.now() - (RECOVERY_HOURS + 24) * 36e5))
   const now = Date.now()
   const muscles = {}
-  for (const row of listRecentStrengthWork(req.user.id, from)) {
-    const ex = EXERCISE_MAP.get(row.exercise_key)
+  const rows = listRecentStrengthWork(req.user.id, from)
+  // Keys outside the curated catalog are library slugs — map their site tags.
+  const libMuscles = new Map(
+    getExercisesBySlugs([...new Set(rows.map((r) => r.exercise_key).filter((k) => !EXERCISE_MAP.has(k)))])
+      .map((e) => [e.slug, musclesForSiteTags(e.muscles)]),
+  )
+  for (const row of rows) {
+    const ex = EXERCISE_MAP.get(row.exercise_key) || libMuscles.get(row.exercise_key)
     if (!ex) continue
     const hours = Math.max(0, (now - new Date(row.start_time).getTime()) / 36e5)
     const decay = Math.max(0, 1 - hours / RECOVERY_HOURS)
