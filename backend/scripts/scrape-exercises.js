@@ -103,6 +103,7 @@ async function worker(queue) {
     try {
       const html = await get(url)
       const row = parse(url, html)
+      let gifFailed = false
       if (row.gif_url) {
         // Download to a temp file and rename so an interrupted write never
         // leaves a truncated .gif that later runs would treat as complete.
@@ -113,15 +114,17 @@ async function worker(queue) {
             fs.writeFileSync(tmp, await get(row.gif_url, 'buf'))
             fs.renameSync(tmp, gifFile)
           }
-          row.gif_path = `data/exercise-gifs/${slug}.gif`
+          // Stored relative to config.dataDir so it resolves under any DATA_DIR.
+          row.gif_path = `exercise-gifs/${slug}.gif`
         } catch (e) {
           // Keep the parsed row (gif_path stays null → retried next run).
           console.error(`GIF FAIL ${slug}: ${e.message}`)
           failed.push(url)
+          gifFailed = true
         }
       }
       upsert.run(row)
-      done++
+      if (!gifFailed) done++
       if (done % 25 === 0) console.log(`${done}/${urls.length}`)
     } catch (e) {
       failed.push(url)
