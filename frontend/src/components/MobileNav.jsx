@@ -1,4 +1,5 @@
-import { Dumbbell, House, Nut, Settings } from 'lucide-react'
+import { useViewportSettled } from '@/hooks/useViewportSettled'
+import { BotMessageSquare, Dumbbell, House, Nut, Settings } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSettings } from '@/context/SettingsContext'
 import RitmoLogo from '@/components/RitmoLogo'
@@ -12,6 +13,7 @@ import RitmoLogo from '@/components/RitmoLogo'
 export function MobileHeader() {
   const { pathname } = useLocation()
   const onYou = pathname.startsWith('/you')
+  const onCoach = pathname.startsWith('/coach')
 
   return (
     <header className="bg-background/90 sticky top-0 z-40 border-b backdrop-blur-md pt-[env(safe-area-inset-top)] md:hidden">
@@ -19,15 +21,27 @@ export function MobileHeader() {
         <Link to="/" aria-label="Ritmo home">
           <RitmoLogo className="text-foreground h-6 w-auto" />
         </Link>
-        {onYou && (
+        <div className="absolute right-2 flex items-center">
+          {onYou && (
+            <Link
+              to="/settings"
+              aria-label="Settings"
+              className="text-muted-foreground hover:text-foreground flex size-9 items-center justify-center rounded-full transition-colors"
+            >
+              <Settings className="size-5" />
+            </Link>
+          )}
           <Link
-            to="/settings"
-            aria-label="Settings"
-            className="text-muted-foreground hover:text-foreground absolute right-3 flex size-9 items-center justify-center rounded-full transition-colors"
+            to="/coach"
+            aria-label="Ask your health coach"
+            aria-current={onCoach ? 'page' : undefined}
+            className={`flex size-9 items-center justify-center rounded-full transition-colors ${
+              onCoach ? 'bg-[var(--neon)]/10 text-[var(--neon)]' : 'text-[var(--neon)]'
+            }`}
           >
-            <Settings className="size-5" />
+            <BotMessageSquare className="size-5" />
           </Link>
-        )}
+        </div>
       </div>
     </header>
   )
@@ -64,6 +78,9 @@ export function BottomNav() {
   const { pathname } = useLocation()
   // Settings is reached from the You tab, so keep You highlighted there too.
   const youActive = pathname.startsWith('/you') || pathname.startsWith('/settings')
+  // iOS corrects the standalone viewport height a beat after first paint; stay
+  // invisible until it has, so the bar never appears and then jumps.
+  const settled = useViewportSettled()
 
   const itemClass = (active) =>
     `flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors ${
@@ -73,7 +90,9 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="bg-background/90 fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur-md pb-[env(safe-area-inset-bottom)] md:hidden"
+      className={`from-background via-background/85 fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t to-transparent pt-3 pb-[env(safe-area-inset-bottom)] transition-opacity duration-150 md:hidden ${
+        settled ? 'opacity-100' : 'opacity-0'
+      }`}
     >
       <div className="flex h-14 items-stretch">
         {TABS.map((tab) => {

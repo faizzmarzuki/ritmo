@@ -10,6 +10,13 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Must agree with viewport-fit=cover above. With cover but no status-bar style,
+         iOS lays the standalone PWA out full-screen (402x874), then corrects to the
+         area below the opaque status bar (402x812) a beat after first paint and
+         shifts the whole page. black-translucent makes both signals say full-bleed,
+         so the height never changes; the env(safe-area-inset-*) paddings throughout
+         the app then keep content clear of the status bar and home indicator. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Ritmo" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

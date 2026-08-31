@@ -7,7 +7,9 @@ import { getUserApiKey, setUserApiKey, listUserApiKeys } from '../db/repo/userAp
  * setup can still configure everything in one place.
  */
 const ENV_FALLBACK = {
-  'vision.apiKey': () => config.vision.apiKey,
+  // The saved vision key is an OpenAI key; VISION_API_KEY only backs it when the
+  // server's vision provider actually is OpenAI (otherwise it's an Anthropic/Google key).
+  'vision.apiKey': () => (config.vision.provider === 'openai' ? config.vision.apiKey : ''),
   'spotify.clientId': () => config.spotify.clientId,
   'spotify.clientSecret': () => config.spotify.clientSecret,
 }
@@ -16,7 +18,12 @@ export const KEY_NAMES = Object.keys(ENV_FALLBACK)
 
 const effective = (userId, name) => getUserApiKey(userId, name) || ENV_FALLBACK[name]()
 
-export const visionKeyFor = (userId) => effective(userId, 'vision.apiKey')
+/** The user's OpenAI key (chat, name-only estimates, OpenAI vision). */
+export const openaiKeyFor = (userId) => effective(userId, 'vision.apiKey')
+
+/** Credential for the configured vision provider — anthropic/google keys come from .env only. */
+export const visionKeyFor = (userId) =>
+  config.vision.provider === 'openai' ? openaiKeyFor(userId) : config.vision.apiKey
 
 export const visionEnabledFor = (userId) =>
   config.vision.provider !== 'disabled' && Boolean(visionKeyFor(userId))

@@ -9,9 +9,12 @@ CREATE TABLE IF NOT EXISTS user_api_keys (
 );
 
 -- Keys saved while they were still server-wide belong to the first (owner) account.
+-- Deliberately no "WHERE EXISTS users" guard: if app_settings holds keys but no
+-- account exists yet, user_id resolves to NULL and the NOT NULL constraint aborts
+-- the whole migration (it runs in a transaction), keeping the table and its data
+-- instead of silently dropping them below.
 INSERT INTO user_api_keys (user_id, key, value)
   SELECT (SELECT id FROM users ORDER BY created_at LIMIT 1), key, value
-  FROM app_settings
-  WHERE EXISTS (SELECT 1 FROM users);
+  FROM app_settings;
 
 DROP TABLE app_settings;

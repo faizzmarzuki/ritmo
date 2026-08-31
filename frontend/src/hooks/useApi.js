@@ -2,24 +2,72 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { onLive } from '@/lib/live'
 
 /**
+ * Last successful response per request, so a screen paints its previous
+ * content immediately instead of collapsing to a skeleton and reflowing when
+ * the data lands. `inflight` lets a screen adopt a request that is already
+ * running — a prefetch started at app boot — rather than firing a second one.
+ */
+const cache = new Map()
+const inflight = new Map()
+
+/** Drop everything. Call on logout so the next user starts clean. */
+export function clearApiCache() {
+  cache.clear()
+  inflight.clear()
+}
+
+function fetchFresh(cacheKey, fetcher) {
+  const p = Promise.resolve()
+    .then(fetcher)
+    .then((result) => {
+      cache.set(cacheKey, result)
+      return result
+    })
+  inflight.set(cacheKey, p)
+  p.catch(() => {}).then(() => {
+    if (inflight.get(cacheKey) === p) inflight.delete(cacheKey)
+  })
+  return p
+}
+
+/**
+ * Warm a request before any screen asks for it, so opening that screen is an
+ * instant paint rather than a skeleton. Cheap to call repeatedly: it no-ops if
+ * the response is already cached or the request is already running, and a
+ * failure is swallowed because nobody is waiting on it yet.
+ */
+export function prefetchApi(cacheKey, fetcher) {
+  if (cache.has(cacheKey) || inflight.has(cacheKey)) return
+  fetchFresh(cacheKey, fetcher).catch(() => {})
+}
+
+/**
  * Fetch server data and keep it fresh: refetches whenever one of the given
  * realtime event types arrives over the SSE stream.
  *
- *   const { data, loading, error, refetch } = useApi(() => api.summary(period), [period], ['activity', 'daily'])
+ *   const { data, loading, error, refetch } = useApi(() => api.summary(period), [period], ['activity'], `summary:${period}`)
+ *
+ * `cacheKey` identifies the request across mounts and to prefetchApi. Omit it
+ * and one is derived from the fetcher's source plus its deps, which is stable
+ * per call site but cannot be prefetched by name.
  */
-export function useApi(fetcher, deps = [], events = []) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+export function useApi(fetcher, deps = [], events = [], cacheKey) {
+  const key = cacheKey ?? `${fetcher}|${JSON.stringify(deps)}`
+  const [data, setData] = useState(() => cache.get(key) ?? null)
+  const [loading, setLoading] = useState(!cache.has(key))
   const [error, setError] = useState(null)
   const fetcherRef = useRef(fetcher)
   fetcherRef.current = fetcher
+  const keyRef = useRef(key)
+  keyRef.current = key
 
+  // Always goes to the network: callers use this after a mutation, so an
+  // already-running request may predate the change they just made.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const refetch = useCallback(async () => {
     try {
       setError(null)
-      const result = await fetcherRef.current()
-      setData(result)
+      setData(await fetchFresh(keyRef.current, () => fetcherRef.current()))
     } catch (err) {
       setError(err)
     } finally {
@@ -28,8 +76,29 @@ export function useApi(fetcher, deps = [], events = []) {
   }, deps)
 
   useEffect(() => {
-    setLoading(true)
+    const k = keyRef.current
+    const cached = cache.get(k)
+    if (cached !== undefined) {
+      setData(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
+    // Adopt a prefetch that is already on the wire instead of duplicating it.
+    const pending = inflight.get(k)
+    if (pending) {
+      let alive = true
+      pending.then(
+        (result) => alive && (setData(result), setLoading(false)),
+        (err) => alive && (setError(err), setLoading(false)),
+      )
+      return () => {
+        alive = false
+      }
+    }
     refetch()
+    return undefined
   }, [refetch])
 
   // Live events can fire every second (Bluetooth HR streaming); collapse

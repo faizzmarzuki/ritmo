@@ -428,6 +428,7 @@ export function SpotifyCard() {
   const [error, setError] = useState('')
   const { keys, busy: keysBusy, message: keysMessage, saveKeys } = useApiKeys()
   const [creds, setCreds] = useState({ clientId: '', clientSecret: '' })
+  const [showCreds, setShowCreds] = useState(false)
 
   const sp = data?.spotify ?? { connected: false }
   const configured = data?.providers?.spotify?.configured
@@ -503,7 +504,17 @@ export function SpotifyCard() {
             </Button>
           )}
         </div>
-        {(!configured || ownApp) && (
+        {configured && !ownApp && !showCreds && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground h-7 px-2 text-[11px]"
+            onClick={() => setShowCreds(true)}
+          >
+            Use your own Spotify app instead
+          </Button>
+        )}
+        {(!configured || ownApp || showCreds) && (
           <div className="space-y-2 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-medium">Your Spotify app</p>

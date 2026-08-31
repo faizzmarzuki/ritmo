@@ -9,6 +9,9 @@ import { config } from '../config.js'
 import { visionEnabledFor } from '../services/apiKeys.js'
 import { one, run } from '../db/index.js'
 import { publish } from '../realtime/hub.js'
+import { logger } from '../lib/log.js'
+
+const log = logger('food')
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -93,6 +96,7 @@ router.post('/log-by-name', async (req, res) => {
     publish(req.user.id, 'nutrition', { mealId, source: 'log-by-name' })
     res.status(201).json({ mealId, ...result })
   } catch (err) {
+    log.error(`log-by-name failed for ${name}: ${err.message}`)
     res.status(err.status || 502).json({ error: err.message })
   }
 })

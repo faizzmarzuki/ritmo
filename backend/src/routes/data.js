@@ -3,7 +3,11 @@ import path from 'node:path'
 import { config } from '../config.js'
 import { requireAuth } from '../auth/middleware.js'
 import { buildSummary, buildWorkouts, buildProgress, buildNutritionDay } from '../services/summary.js'
-import { listActivities, getActivity, getStream, addBodyComp, listBodyComp, insertHrSamples, latestHr } from '../db/repo/fitness.js'
+import {
+  listActivities, getActivity, getStream, upsertActivity, deleteActivity,
+  addBodyComp, listBodyComp, insertHrSamples, latestHr,
+} from '../db/repo/fitness.js'
+import { randomId } from '../lib/crypto.js'
 import {
   listMeals, createMeal, addFoodItem, deleteFoodItem, deleteMeal, addHydration,
 } from '../db/repo/nutrition.js'
@@ -32,6 +36,60 @@ router.get('/activities', (req, res) => {
     from: req.query.from, to: req.query.to,
     sport: req.query.sport, limit: Math.min(Number(req.query.limit) || 100, 1000),
   }))
+})
+
+/**
+ * POST /api/activities — manually log a workout (gym sessions, mostly).
+ * Watch-recorded activities stream in from Garmin; this covers everything else.
+ */
+const MANUAL_SPORTS = new Set(['strength', 'run', 'ride', 'swim', 'walk', 'other'])
+const DEFAULT_NAMES = { strength: 'Gym workout', run: 'Run', ride: 'Ride', swim: 'Swim', walk: 'Walk', other: 'Workout' }
+
+router.post('/activities', (req, res) => {
+  const b = req.body || {}
+  const sport = MANUAL_SPORTS.has(b.sport) ? b.sport : 'strength'
+  const durationMin = Number(b.durationMin)
+  if (!Number.isFinite(durationMin) || durationMin <= 0 || durationMin > 1440) {
+    return res.status(400).json({ error: 'durationMin must be 1-1440' })
+  }
+  const dateKey = dateKeyParam(b.date)
+  const time = /^\d{2}:\d{2}$/.test(String(b.time || '')) ? b.time : '12:00'
+  const startLocal = `${dateKey}T${time}:00`
+  const durationS = Math.round(durationMin * 60)
+  const distanceM = Math.max(0, Math.min(Number(b.distanceKm) || 0, 500)) * 1000
+  const avgHr = Math.round(Number(b.avgHr))
+  const { id } = upsertActivity(req.user.id, {
+    provider: 'manual',
+    externalId: randomId(8),
+    name: String(b.name || '').trim().slice(0, 80) || DEFAULT_NAMES[sport],
+    sport,
+    sportRaw: null,
+    startTime: new Date(startLocal).toISOString(), // server-local tz — single-user deployment
+    startLocal,
+    dateKey,
+    timezone: null,
+    durationS,
+    movingS: durationS,
+    distanceM,
+    elevationM: 0,
+    calories: Math.max(0, Math.min(Math.round(Number(b.calories) || 0), 10000)),
+    avgHr: Number.isFinite(avgHr) && avgHr >= 25 && avgHr <= 250 ? avgHr : null,
+    maxHr: null,
+    avgSpeedMs: distanceM > 0 ? distanceM / durationS : null,
+    avgPaceSKm: distanceM > 0 ? durationS / (distanceM / 1000) : null,
+    steps: null,
+  })
+  publish(req.user.id, 'activity', { id })
+  res.status(201).json({ id })
+})
+
+router.delete('/activities/:id', (req, res) => {
+  const act = getActivity(req.user.id, req.params.id)
+  if (!act) return res.status(404).json({ error: 'Not found' })
+  if (act.provider !== 'manual') return res.status(400).json({ error: 'Only manually logged workouts can be deleted' })
+  deleteActivity(req.user.id, 'manual', act.external_id)
+  publish(req.user.id, 'activity', {})
+  res.json({ ok: true })
 })
 
 router.get('/activities/:id', (req, res) => {

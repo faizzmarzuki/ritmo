@@ -136,3 +136,65 @@
   font-weight: 400;
   letter-spacing: normal;
 }
+/* Native-app style page transitions (mobile only): forward = slide in from the
+   right, back = from the left. Applied by AppShell, keyed on the route. */
+@keyframes page-in-fwd {
+  from { opacity: 0.3; transform: translateX(26px); }
+  to   { opacity: 1;   transform: none; }
+}
+@keyframes page-in-back {
+  from { opacity: 0.3; transform: translateX(-26px); }
+  to   { opacity: 1;   transform: none; }
+}
+@media (max-width: 767px) {
+  .page-fwd  { animation: page-in-fwd  0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+  .page-back { animation: page-in-back 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-fwd, .page-back { animation: none; }
+}
+
+/* Hide scrollbars everywhere (vertical and horizontal); scrolling still works. */
+@layer base {
+  *,
+  html,
+  body {
+    scrollbar-width: none;      /* Firefox */
+    -ms-overflow-style: none;   /* legacy Edge/IE */
+  }
+  *::-webkit-scrollbar,
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;              /* Chrome/Safari/WebKit */
+  }
+}
+
+/* Explicit opt-in class (used by the sidebar) — same effect. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* iOS Safari / standalone PWA scroll stability.
+   The scrollbar rules above already cover iOS (WebKit reads ::-webkit-scrollbar;
+   Safari 18.2+ also reads scrollbar-width) — iOS scrollbars are overlay, so they
+   never took layout space. These rules address the shifting that remains. */
+@layer base {
+  html {
+    /* Stop iOS inflating text (and reflowing the layout) on rotation. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  html,
+  body {
+    /* No rubber-band chaining to the document behind a nested scroller. */
+    overscroll-behavior-y: none;
+  }
+}

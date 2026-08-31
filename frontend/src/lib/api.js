@@ -9,9 +9,10 @@
 // Empty string is meaningful: same-origin requests via the Vite dev proxy.
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
-async function call(path, { method = 'GET', body, headers } = {}) {
+async function call(path, { method = 'GET', body, headers, cache } = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method,
+    cache,
     credentials: 'include',
     headers: body instanceof FormData ? headers : { 'Content-Type': 'application/json', ...headers },
     body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
@@ -35,7 +36,7 @@ export const api = {
   updateSettings: (patch) => call('/api/auth/settings', { method: 'PATCH', body: patch }),
 
   // server API keys (OpenAI, Spotify app credentials) — GET returns masked status only
-  getApiKeys: () => call('/api/settings/keys'),
+  getApiKeys: () => call('/api/settings/keys', { cache: 'no-store' }),
   updateApiKeys: (patch) => call('/api/settings/keys', { method: 'PUT', body: patch }),
 
   // integrations
@@ -51,6 +52,8 @@ export const api = {
   workouts: () => call('/api/workouts'),
   activities: (params = {}) => call(`/api/activities?${new URLSearchParams(params)}`),
   activity: (id) => call(`/api/activities/${id}`),
+  logWorkout: (workout) => call('/api/activities', { method: 'POST', body: workout }),
+  deleteActivity: (id) => call(`/api/activities/${id}`, { method: 'DELETE' }),
   nutrition: (date) => call(`/api/nutrition${date ? `?date=${date}` : ''}`),
   addMeal: (meal) => call('/api/meals', { method: 'POST', body: meal }),
   deleteMeal: (id) => call(`/api/meals/${id}`, { method: 'DELETE' }),
@@ -62,13 +65,18 @@ export const api = {
   goals: () => call('/api/goals'),
   logGoal: (id, done, date) => call(`/api/goals/${id}/log`, { method: 'POST', body: { done, date } }),
 
-  // chat coach — NDJSON stream: onStep(label) fires per research step, resolves with { text, ms }
-  chat: async (messages, onStep) => {
+  // chat coach — persistent conversations
+  chatConversations: () => call('/api/chat/conversations'),
+  chatConversation: (id) => call(`/api/chat/conversations/${id}`),
+  deleteChatConversation: (id) => call(`/api/chat/conversations/${id}`, { method: 'DELETE' }),
+
+  // NDJSON stream: onStep(label) fires per research step, resolves with { text, ms, conversationId }
+  chat: async (message, conversationId, onStep) => {
     const res = await fetch(`${BASE}/api/chat`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ message, conversationId }),
     })
     if (!res.ok || !res.body) {
       const data = await res.json().catch(() => null)

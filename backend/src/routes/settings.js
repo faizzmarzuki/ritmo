@@ -6,6 +6,7 @@ import { publish } from '../realtime/hub.js'
 const router = Router()
 
 router.get('/settings/keys', requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store') // credential status must never be cached
   res.json({ keys: keyStatus(req.user.id) })
 })
 

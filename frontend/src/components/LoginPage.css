@@ -166,3 +166,46 @@ input:focus {
   top: 16px;
   right: 16px;
 }
+
+/* Password field with a show/hide toggle. The wrapper carries the spacing the
+   bare input used to own, so the row keeps the same rhythm as the others. */
+.password-field {
+  position: relative;
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.password-field input {
+  flex: 1;
+  margin-bottom: 0;
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.password-toggle:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--neon);
+  outline-offset: 2px;
+}

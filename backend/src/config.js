@@ -58,7 +58,7 @@ export const config = {
   },
 
   chat: {
-    model: process.env.CHAT_MODEL || 'gpt-4o-mini',
+    model: process.env.CHAT_MODEL || 'gpt-5-mini',
   },
 
   vision: {
@@ -78,6 +78,14 @@ for (const dir of [config.dataDir, config.rawDir, config.photoDir]) {
   fs.mkdirSync(dir, { recursive: true })
 }
 
+/** Vision/chat requests carry API keys in headers — refuse to send them over plain http. */
+export function visionBaseUrl() {
+  if (!/^https:\/\//i.test(config.vision.baseUrl)) {
+    throw Object.assign(new Error('VISION_BASE_URL must be an https URL.'), { status: 503 })
+  }
+  return config.vision.baseUrl
+}
+
 /** Warnings surfaced on boot and via GET /api/health so misconfiguration is obvious. */
 export function configWarnings() {
   const w = []
@@ -85,8 +93,8 @@ export function configWarnings() {
   if (config.tokenEncKey.startsWith('dev-insecure')) w.push('TOKEN_ENC_KEY is not set — provider tokens are weakly encrypted.')
   if (config.garmin.mode === 'off') w.push('Garmin is disabled (GARMIN_MODE=off).')
   else if (!config.garmin.enabled) w.push(`Garmin mode "${config.garmin.mode}" is missing credentials.`)
-  if (!config.vision.enabled) w.push('Food-photo agent is disabled (no OpenAI API key — Settings → API keys, or VISION_API_KEY).')
-  if (!config.spotify.enabled) w.push('Spotify is not configured (no Client ID/Secret — Settings → API keys, or SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).')
+  if (!config.vision.enabled) w.push('Food-photo agent is disabled (no OpenAI API key — Settings → Integrations, or VISION_API_KEY).')
+  if (!config.spotify.enabled) w.push('Spotify is not configured (no Client ID/Secret — Settings → Integrations, or SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).')
   if (config.publicUrl.includes('localhost')) {
     w.push('PUBLIC_URL points at localhost — Garmin push webhooks cannot reach this server. Use a tunnel for official-mode realtime push.')
   }

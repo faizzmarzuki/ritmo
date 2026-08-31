@@ -16,7 +16,7 @@ export default defineConfig({
     // Same-origin path to the backend so the app works on any dev port
     // (used when VITE_API_URL is set to empty — see .env.local-proxy).
     proxy: {
-      '/api': { target: 'http://localhost:4000' },
+      '/api': { target: process.env.API_PROXY_TARGET || 'http://localhost:4000' },
     },
   },
 })

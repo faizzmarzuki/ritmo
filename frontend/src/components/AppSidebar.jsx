@@ -1,4 +1,4 @@
-import { Dumbbell, House, Nut, Settings, UserRound } from 'lucide-react'
+import { BotMessageSquare, Dumbbell, House, Nut, Settings, UserRound } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSettings } from '@/context/SettingsContext'
 import {
@@ -23,6 +23,7 @@ const items = [
   { title: 'Home', icon: House, path: '/' },
   { title: 'Workouts', icon: Dumbbell, path: '/workouts' },
   { title: 'Nutrition', icon: Nut, path: '/nutrition' },
+  { title: 'Coach', icon: BotMessageSquare, path: '/coach' },
   { title: 'You', icon: UserRound, path: '/you' },
 ]
 
