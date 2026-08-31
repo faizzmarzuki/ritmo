@@ -1,4 +1,4 @@
-import { all, run, tx } from '../index.js'
+import { all, one, run, tx } from '../index.js'
 import { randomId } from '../../lib/crypto.js'
 
 /** Replace the exercise breakdown attached to a logged gym session. */
@@ -30,3 +30,35 @@ export const listRecentStrengthWork = (userId, fromDateKey) =>
      WHERE se.user_id = ? AND a.date_key >= ?`,
     userId, fromDateKey,
   )
+
+// ── scraped exercise library (backend/scripts/scrape-exercises.js) ───────────
+const parseJson = (s, fallback) => {
+  try {
+    const v = JSON.parse(s)
+    return Array.isArray(v) ? v : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** The whole library, trimmed to what the exercise picker needs. */
+export const listExerciseLibrary = () =>
+  all('SELECT slug, name, gif_path, muscles, equipment FROM exercises ORDER BY name').map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    hasGif: Boolean(r.gif_path),
+    muscles: parseJson(r.muscles, []),
+    equipment: parseJson(r.equipment, []),
+  }))
+
+export const getExerciseBySlug = (slug) =>
+  one('SELECT slug, name, gif_path, muscles FROM exercises WHERE slug = ?', slug)
+
+/** Batch lookup with parsed muscle tags — used to validate logs and map recovery. */
+export const getExercisesBySlugs = (slugs) => {
+  if (!slugs.length) return []
+  return all(
+    `SELECT slug, name, muscles FROM exercises WHERE slug IN (${slugs.map(() => '?').join(',')})`,
+    ...slugs,
+  ).map((r) => ({ slug: r.slug, name: r.name, muscles: parseJson(r.muscles, []) }))
+}

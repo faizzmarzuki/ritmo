@@ -52,3 +52,41 @@ export const EXERCISES = [
 ]
 
 export const EXERCISE_MAP = new Map(EXERCISES.map((e) => [e.key, e]))
+
+/**
+ * fitnessprogramer.com muscle slugs (the scraped `exercises` table) → this
+ * app's anatomy muscle keys. The site's tags are coarser than the curated
+ * catalog above, so several map to a primary plus a likely-secondary group;
+ * non-muscle tags (yoga, calisthenics) simply don't light anything up.
+ */
+export const SITE_MUSCLE_MAP = {
+  biceps: { primary: ['biceps'], secondary: ['forearms'] },
+  triceps: { primary: ['triceps'], secondary: [] },
+  chest: { primary: ['chest'], secondary: ['shoulders'] },
+  shoulders: { primary: ['shoulders'], secondary: [] },
+  forearm: { primary: ['forearms'], secondary: [] },
+  abs: { primary: ['abs'], secondary: ['obliques'] },
+  back: { primary: ['lats'], secondary: ['traps'] },
+  trapezius: { primary: ['traps'], secondary: [] },
+  'erector-spinae': { primary: ['lowerback'], secondary: ['glutes'] },
+  leg: { primary: ['quads'], secondary: ['hamstrings'] },
+  hip: { primary: ['glutes'], secondary: ['hamstrings'] },
+  calf: { primary: ['calves'], secondary: [] },
+  'full-body': { primary: [], secondary: ['shoulders', 'lats', 'quads', 'glutes'] },
+  cardio: { primary: [], secondary: ['quads', 'calves'] },
+  neck: { primary: [], secondary: ['traps'] },
+}
+
+/** Collapse an exercise's site muscle tags into primary/secondary anatomy keys. */
+export function musclesForSiteTags(tags) {
+  const primary = new Set()
+  const secondary = new Set()
+  for (const tag of Array.isArray(tags) ? tags : []) {
+    const m = SITE_MUSCLE_MAP[tag]
+    if (!m) continue
+    for (const k of m.primary) primary.add(k)
+    for (const k of m.secondary) secondary.add(k)
+  }
+  for (const k of primary) secondary.delete(k)
+  return { primary: [...primary], secondary: [...secondary] }
+}

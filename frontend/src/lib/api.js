@@ -55,6 +55,8 @@ export const api = {
   logWorkout: (workout) => call('/api/activities', { method: 'POST', body: workout }),
   deleteActivity: (id) => call(`/api/activities/${id}`, { method: 'DELETE' }),
   strengthExercises: () => call('/api/strength/exercises'),
+  exerciseLibrary: () => call('/api/exercises'),
+  exerciseGifUrl: (slug) => `${BASE}/api/exercise-gifs/${encodeURIComponent(slug)}.gif`,
   muscleRecovery: () => call('/api/strength/recovery'),
   nutrition: (date) => call(`/api/nutrition${date ? `?date=${date}` : ''}`),
   addMeal: (meal) => call('/api/meals', { method: 'POST', body: meal }),

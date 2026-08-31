@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Activity,
   Bike,
@@ -6,9 +6,11 @@ import {
   Flame,
   Footprints,
   Loader2,
+  Maximize2,
   Minus,
   Plus,
   Route,
+  Search,
   Target,
   Timer,
   Trash2,
@@ -62,15 +64,16 @@ const fmtPace = (p) =>
   `${Math.floor(p)}:${String(Math.round((p % 1) * 60)).padStart(2, '0')}`
 
 const SPORT_ICONS = { run: Footprints, walk: Footprints, ride: Bike, swim: Waves, strength: Dumbbell }
-const DISTANCE_SPORTS = new Set(['run', 'walk', 'ride', 'swim'])
 
-const SPORT_OPTIONS = [
-  { value: 'strength', label: 'Gym / Strength' },
-  { value: 'run', label: 'Run' },
-  { value: 'walk', label: 'Walk' },
-  { value: 'ride', label: 'Ride' },
-  { value: 'swim', label: 'Swim' },
-  { value: 'other', label: 'Other' },
+// Equipment slugs from the scraped exercise library worth filtering by.
+const EQUIP_FILTERS = [
+  ['all', 'All'],
+  ['machine', 'Machine'],
+  ['cable', 'Cable'],
+  ['barbell', 'Barbell'],
+  ['dumbbells', 'Dumbbell'],
+  ['no-equipment', 'Bodyweight'],
+  ['kettlebell', 'Kettlebell'],
 ]
 
 function Field({ label, children }) {
@@ -83,21 +86,84 @@ function Field({ label, children }) {
 }
 
 /**
+ * Square demo-GIF thumbnail; falls back to a dumbbell glyph when there's no
+ * GIF. With `onPreview` the square becomes a button that opens an enlarged
+ * view of the demo.
+ */
+function ExerciseGif({ slug, hasGif, className = '', onPreview }) {
+  // Aborted downloads (e.g. the suggestion list unmounting while its GIFs are
+  // still streaming) fire onError too — retry with a cache-buster before
+  // giving up on the image.
+  const [attempt, setAttempt] = useState(0)
+  const showGif = hasGif && attempt < 3
+  const frame = `border-border/70 relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border ${
+    showGif ? 'bg-white' : 'bg-muted'
+  } ${className}`
+  const content = showGif ? (
+    <img
+      src={api.exerciseGifUrl(slug) + (attempt ? `?retry=${attempt}` : '')}
+      alt=""
+      loading="lazy"
+      onError={() => setAttempt((a) => a + 1)}
+      className="h-full w-full object-contain"
+    />
+  ) : (
+    <Dumbbell className="text-muted-foreground size-4" />
+  )
+  if (!onPreview || !showGif) return <div className={frame}>{content}</div>
+  return (
+    <button
+      type="button"
+      aria-label="Enlarge exercise demo"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onPreview}
+      className={`${frame} cursor-zoom-in`}
+    >
+      {content}
+      <span className="absolute right-0 bottom-0 rounded-tl-md bg-black/45 p-0.5">
+        <Maximize2 className="size-2.5 text-white" />
+      </span>
+    </button>
+  )
+}
+
+/**
  * Manual workout logger (bottom sheet) — mainly for gym sessions the watch
  * didn't record. Watch activities (incl. strength) sync in from Garmin.
  */
 function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
-  const [sport, setSport] = useState('strength')
   const [name, setName] = useState('')
   const [date, setDate] = useState(() => new Date().toLocaleDateString('sv-SE')) // YYYY-MM-DD, local
-  const [durationMin, setDurationMin] = useState('')
-  const [distanceKm, setDistanceKm] = useState('')
-  const [calories, setCalories] = useState('')
-  const [avgHr, setAvgHr] = useState('')
-  const [exercises, setExercises] = useState([]) // [{ key, reps: ['10', …], restS }]
+  const [exercises, setExercises] = useState([]) // [{ key, name, hasGif, reps: ['10', …], restS }]
+  const [query, setQuery] = useState('')
+  const [equip, setEquip] = useState('all')
+  const [focused, setFocused] = useState(false)
+  const [preview, setPreview] = useState(null) // { slug, name } enlarged in an overlay
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const { data: catalog } = useApi(() => api.strengthExercises(), [], [], 'strength-exercises')
+  const searchRef = useRef(null)
+  const { data: library } = useApi(() => api.exerciseLibrary(), [], [], 'exercise-library')
+
+  // Word-based matching so "shoulder press machine" also finds
+  // "Machine Shoulder Press".
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  // Keep the suggestions open while a preview overlay is up, so closing the
+  // preview drops you back into the same list.
+  const suggestionsOpen = (focused || preview) && (words.length > 0 || equip !== 'all')
+  const results = suggestionsOpen
+    ? (library || [])
+        .filter((e) => {
+          const name = e.name.toLowerCase()
+          return words.every((w) => name.includes(w)) &&
+            (equip === 'all' || e.equipment.includes(equip))
+        })
+        .slice(0, 30)
+    : []
+
+  function addExercise(e) {
+    setExercises((xs) => [...xs, { key: e.slug, name: e.name, hasGif: e.hasGif, reps: ['', '', ''], restS: '' }])
+    setQuery('')
+  }
 
   function updateExercise(i, patch) {
     setExercises((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))
@@ -108,30 +174,25 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
     setBusy(true)
     setError('')
     try {
+      // No duration/calories/HR inputs — the backend estimates duration from
+      // the logged sets and rest times.
       await api.logWorkout({
-        sport,
+        sport: 'strength',
         name,
         date,
-        durationMin: Number(durationMin),
-        distanceKm: DISTANCE_SPORTS.has(sport) ? Number(distanceKm) || 0 : 0,
-        calories: Number(calories) || 0,
-        avgHr: Number(avgHr) || 0,
-        exercises: sport === 'strength'
-          ? exercises
-              .map((ex) => ({
-                key: ex.key,
-                restS: Number(ex.restS) || 0,
-                reps: ex.reps.map((r) => Number(r)).filter((n) => Number.isFinite(n) && n > 0),
-              }))
-              .filter((ex) => ex.reps.length > 0)
-          : undefined,
+        exercises: exercises
+          .map((ex) => ({
+            key: ex.key,
+            restS: Number(ex.restS) || 0,
+            reps: ex.reps.map((r) => Number(r)).filter((n) => Number.isFinite(n) && n > 0),
+          }))
+          .filter((ex) => ex.reps.length > 0),
       })
       setName('')
-      setDurationMin('')
-      setDistanceKm('')
-      setCalories('')
-      setAvgHr('')
       setExercises([])
+      setQuery('')
+      setEquip('all')
+      setPreview(null)
       onOpenChange(false)
       onLogged?.()
     } catch (err) {
@@ -142,7 +203,13 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setPreview(null) // don't reopen onto a stale overlay
+        onOpenChange(next)
+      }}
+    >
       <SheetContent
         side="bottom"
         className="mx-auto max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-md"
@@ -153,101 +220,107 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
             Log a workout
           </SheetTitle>
           <SheetDescription className="text-xs">
-            Workouts recorded on your Garmin watch sync in automatically — log the rest here.
+            Pick your machines & exercises and log reps per set — the muscle recovery map updates automatically.
           </SheetDescription>
         </SheetHeader>
 
         <form className="flex flex-col gap-3 px-4" onSubmit={submit}>
-          <div className="flex flex-wrap gap-1.5">
-            {SPORT_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setSport(opt.value)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  sport === opt.value
-                    ? 'border-[var(--neon)]/40 bg-[var(--neon)]/10 text-[var(--neon)]'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          <Field label="Name (optional)">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={sport === 'strength' ? 'e.g. Push day — chest & triceps' : 'e.g. Easy evening session'}
-              maxLength={80}
-            />
-          </Field>
-
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Name (optional)">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Push day"
+                maxLength={80}
+              />
+            </Field>
             <Field label="Date">
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </Field>
-            <Field label="Duration (min)">
-              <Input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max="1440"
-                value={durationMin}
-                onChange={(e) => setDurationMin(e.target.value)}
-                placeholder="45"
-                required
-              />
-            </Field>
-            {DISTANCE_SPORTS.has(sport) && (
-              <Field label="Distance (km)">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={distanceKm}
-                  onChange={(e) => setDistanceKm(e.target.value)}
-                  placeholder="5.0"
-                />
-              </Field>
-            )}
-            <Field label="Calories (optional)">
-              <Input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-                placeholder="300"
-              />
-            </Field>
-            <Field label="Avg HR (optional)">
-              <Input
-                type="number"
-                inputMode="numeric"
-                min="25"
-                max="250"
-                value={avgHr}
-                onChange={(e) => setAvgHr(e.target.value)}
-                placeholder="120"
-              />
-            </Field>
           </div>
 
-          {sport === 'strength' && (
-            <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
               <span className="text-muted-foreground text-[11px] font-medium">
-                Exercises — reps per set & rest (optional)
+                Machines & exercises — reps per set & rest
               </span>
 
+              <div className="relative">
+                <Search className="text-muted-foreground pointer-events-none absolute top-2 left-2.5 size-4" />
+                <Input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                  placeholder="Search machines & exercises…"
+                  aria-label="Search machines and exercises"
+                  style={{ paddingLeft: '2rem' }} // the Input's own px sets padding-inline, which beats a pl-* class
+                />
+                {suggestionsOpen && (
+                  <div className="border-border/70 bg-popover absolute top-full right-0 left-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg">
+                    {results.map((e) => (
+                      <div
+                        key={e.slug}
+                        className="hover:bg-muted/50 border-border/40 flex w-full items-center gap-2.5 border-b p-2 last:border-b-0"
+                      >
+                        <ExerciseGif
+                          slug={e.slug}
+                          hasGif={e.hasGif}
+                          onPreview={() => setPreview({ slug: e.slug, name: e.name })}
+                          className="size-10"
+                        />
+                        <button
+                          type="button"
+                          onMouseDown={(ev) => ev.preventDefault()}
+                          onClick={() => addExercise(e)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="truncate text-xs font-medium">{e.name}</p>
+                          <p className="text-muted-foreground truncate text-[10px]">{e.muscles.join(' · ')}</p>
+                        </button>
+                      </div>
+                    ))}
+                    {results.length === 0 && (
+                      <p className="text-muted-foreground p-3 text-center text-xs">
+                        {library ? 'No exercises match your search.' : 'Loading exercise library…'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {EQUIP_FILTERS.map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setEquip(value)
+                      searchRef.current?.focus()
+                    }}
+                    className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                      equip === value
+                        ? 'border-[var(--neon)]/40 bg-[var(--neon)]/10 text-[var(--neon)]'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {exercises.length > 0 && (
+              <div className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto pr-0.5">
               {exercises.map((ex, i) => {
-                const meta = catalog?.find((c) => c.key === ex.key)
                 return (
                   <div key={i} className="border-border/70 rounded-lg border p-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-semibold">{meta?.label || ex.key}</p>
+                    <div className="flex items-center gap-2.5">
+                      <ExerciseGif
+                        slug={ex.key}
+                        hasGif={ex.hasGif}
+                        onPreview={() => setPreview({ slug: ex.key, name: ex.name })}
+                        className="size-12"
+                      />
+                      <p className="min-w-0 flex-1 truncate text-xs font-semibold">{ex.name}</p>
                       <button
                         type="button"
                         aria-label="Remove exercise"
@@ -317,34 +390,45 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
                 )
               })}
 
-              <select
-                value=""
-                aria-label="Add an exercise"
-                className="border-input dark:bg-input/30 h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none"
-                onChange={(e) => {
-                  const key = e.target.value
-                  if (key) setExercises((xs) => [...xs, { key, reps: ['', '', ''], restS: '' }])
-                  e.target.value = ''
-                }}
-              >
-                <option value="">+ Add a machine or exercise…</option>
-                {[...new Set((catalog || []).map((c) => c.category))].map((cat) => (
-                  <optgroup key={cat} label={cat}>
-                    {catalog.filter((c) => c.category === cat).map((c) => (
-                      <option key={c.key} value={c.key}>{c.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-          )}
+              </div>
+              )}
+          </div>
 
           {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
 
-          <Button type="submit" disabled={busy || !durationMin} className="w-full">
+          <Button type="submit" disabled={busy || exercises.length === 0} className="w-full">
             {busy ? <Loader2 className="size-4 animate-spin" /> : 'Log workout'}
           </Button>
         </form>
+
+        {preview && (
+          <div
+            role="dialog"
+            aria-label={`${preview.name} demo`}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
+            onClick={() => setPreview(null)}
+          >
+            <div
+              className="relative w-full max-w-sm rounded-xl bg-white p-3 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={api.exerciseGifUrl(preview.slug)}
+                alt={`${preview.name} demo`}
+                className="aspect-square w-full object-contain"
+              />
+              <p className="mt-1 text-center text-sm font-medium text-neutral-900">{preview.name}</p>
+              <button
+                type="button"
+                aria-label="Close preview"
+                onClick={() => setPreview(null)}
+                className="absolute top-2 right-2 rounded-full bg-black/10 p-1 text-neutral-700 hover:bg-black/20"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   )
