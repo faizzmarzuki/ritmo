@@ -106,10 +106,15 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
       pending.then(
         (result) => {
           if (!alive || id !== reqIdRef.current) return
-          // Same freshness rule as refetch: paint only what actually got cached,
-          // so a request outlived by logout (clearApiCache) never reaches state.
-          if (cache.has(k) && cache.get(k) === result) setData(result)
-          setLoading(false)
+          // Same freshness rule as refetch: paint what actually got cached — our
+          // result if it survived, or the fresher value that replaced it. When
+          // nothing is cached (logout cleared it) publish neither data nor the
+          // loading flip: a discarded request must not present as loaded-empty,
+          // and logout unmounts the consumers anyway.
+          if (cache.has(k)) {
+            setData(cache.get(k))
+            setLoading(false)
+          }
         },
         (err) => {
           if (!alive || id !== reqIdRef.current) return
