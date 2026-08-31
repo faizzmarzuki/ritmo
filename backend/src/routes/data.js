@@ -12,6 +12,10 @@ import {
   listMeals, createMeal, addFoodItem, deleteFoodItem, deleteMeal, addHydration,
 } from '../db/repo/nutrition.js'
 import { listGoals, setGoalDone } from '../db/repo/users.js'
+import {
+  replaceStrengthExercises, listStrengthExercises, listRecentStrengthWork,
+} from '../db/repo/strength.js'
+import { EXERCISES, EXERCISE_MAP, RECOVERY_HOURS } from '../lib/exercises.js'
 import { toDateKey } from '../lib/time.js'
 import { publish } from '../realtime/hub.js'
 
@@ -79,6 +83,18 @@ router.post('/activities', (req, res) => {
     avgPaceSKm: distanceM > 0 ? durationS / (distanceM / 1000) : null,
     steps: null,
   })
+  // Optional gym detail: which machines/exercises, reps per set, rest between sets.
+  if (sport === 'strength' && Array.isArray(b.exercises)) {
+    const cleaned = b.exercises.slice(0, 30).map((ex) => ({
+      key: EXERCISE_MAP.has(ex?.key) ? ex.key : null,
+      restS: Math.max(0, Math.min(Math.round(Number(ex?.restS) || 0), 3600)) || null,
+      reps: (Array.isArray(ex?.reps) ? ex.reps : [])
+        .map((r) => Math.round(Number(r)))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 500)
+        .slice(0, 30),
+    })).filter((ex) => ex.key && ex.reps.length > 0)
+    if (cleaned.length) replaceStrengthExercises(req.user.id, id, cleaned)
+  }
   publish(req.user.id, 'activity', { id })
   res.status(201).json({ id })
 })
@@ -97,12 +113,46 @@ router.get('/activities/:id', (req, res) => {
   if (!act) return res.status(404).json({ error: 'Not found' })
   res.json({
     ...act,
+    exercises: listStrengthExercises(req.user.id, act.id).map((ex) => ({
+      ...ex,
+      label: EXERCISE_MAP.get(ex.key)?.label || ex.key,
+    })),
     streams: {
       heartrate: getStream(act.id, 'heartrate'),
       velocity: getStream(act.id, 'velocity'),
       altitude: getStream(act.id, 'altitude'),
     },
   })
+})
+
+// ── strength / muscle recovery ───────────────────────────────────────────────
+router.get('/strength/exercises', (req, res) => res.json(EXERCISES))
+
+/**
+ * GET /api/strength/recovery — freshness per muscle group for the anatomy card.
+ * intensity 1 = trained just now (renders red) fading linearly to 0 over
+ * RECOVERY_HOURS (white = fully recovered). Secondary muscles get ~60% of the
+ * stimulus, so they start orange instead of red.
+ */
+router.get('/strength/recovery', (req, res) => {
+  const from = toDateKey(new Date(Date.now() - (RECOVERY_HOURS + 24) * 36e5))
+  const now = Date.now()
+  const muscles = {}
+  for (const row of listRecentStrengthWork(req.user.id, from)) {
+    const ex = EXERCISE_MAP.get(row.exercise_key)
+    if (!ex) continue
+    const hours = Math.max(0, (now - new Date(row.start_time).getTime()) / 36e5)
+    const decay = Math.max(0, 1 - hours / RECOVERY_HOURS)
+    if (decay <= 0) continue
+    const hit = (muscle, weight) => {
+      const cur = muscles[muscle] || (muscles[muscle] = { intensity: 0, lastWorked: row.date_key })
+      cur.intensity = Math.max(cur.intensity, Math.round(decay * weight * 1000) / 1000)
+      if (row.date_key > cur.lastWorked) cur.lastWorked = row.date_key
+    }
+    for (const m of ex.primary) hit(m, 1)
+    for (const m of ex.secondary) hit(m, 0.6)
+  }
+  res.json({ muscles, recoveryHours: RECOVERY_HOURS })
 })
 
 // ── live heart rate ──────────────────────────────────────────────────────────

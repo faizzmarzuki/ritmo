@@ -6,6 +6,7 @@ import {
   Flame,
   Footprints,
   Loader2,
+  Minus,
   Plus,
   Route,
   Target,
@@ -14,6 +15,7 @@ import {
   TrendingUp,
   Trophy,
   Waves,
+  X,
 } from 'lucide-react'
 import {
   Bar,
@@ -43,6 +45,7 @@ import {
 } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
 import EmptyState from '@/components/EmptyState'
+import MuscleRecoveryCard from '@/components/MuscleRecoveryCard'
 import { api } from '@/lib/api'
 import { useApi } from '@/hooks/useApi'
 import { useSettings } from '@/context/SettingsContext'
@@ -91,8 +94,14 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
   const [distanceKm, setDistanceKm] = useState('')
   const [calories, setCalories] = useState('')
   const [avgHr, setAvgHr] = useState('')
+  const [exercises, setExercises] = useState([]) // [{ key, reps: ['10', …], restS }]
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const { data: catalog } = useApi(() => api.strengthExercises(), [], [], 'strength-exercises')
+
+  function updateExercise(i, patch) {
+    setExercises((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -107,12 +116,22 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
         distanceKm: DISTANCE_SPORTS.has(sport) ? Number(distanceKm) || 0 : 0,
         calories: Number(calories) || 0,
         avgHr: Number(avgHr) || 0,
+        exercises: sport === 'strength'
+          ? exercises
+              .map((ex) => ({
+                key: ex.key,
+                restS: Number(ex.restS) || 0,
+                reps: ex.reps.map((r) => Number(r)).filter((n) => Number.isFinite(n) && n > 0),
+              }))
+              .filter((ex) => ex.reps.length > 0)
+          : undefined,
       })
       setName('')
       setDurationMin('')
       setDistanceKm('')
       setCalories('')
       setAvgHr('')
+      setExercises([])
       onOpenChange(false)
       onLogged?.()
     } catch (err) {
@@ -126,7 +145,7 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="mx-auto w-full rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-md"
+        className="mx-auto max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-md"
       >
         <SheetHeader className="pb-0">
           <SheetTitle className="flex items-center gap-2">
@@ -216,6 +235,109 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
               />
             </Field>
           </div>
+
+          {sport === 'strength' && (
+            <div className="flex flex-col gap-2">
+              <span className="text-muted-foreground text-[11px] font-medium">
+                Exercises — reps per set & rest (optional)
+              </span>
+
+              {exercises.map((ex, i) => {
+                const meta = catalog?.find((c) => c.key === ex.key)
+                return (
+                  <div key={i} className="border-border/70 rounded-lg border p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs font-semibold">{meta?.label || ex.key}</p>
+                      <button
+                        type="button"
+                        aria-label="Remove exercise"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setExercises((xs) => xs.filter((_, j) => j !== i))}
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-end gap-1.5">
+                      {ex.reps.map((r, si) => (
+                        <label key={si} className="flex flex-col items-center gap-0.5">
+                          <span className="text-muted-foreground text-[9px]">Set {si + 1}</span>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min="1"
+                            max="200"
+                            value={r}
+                            placeholder="10"
+                            className="h-8 w-12 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                            onChange={(e) =>
+                              updateExercise(i, { reps: ex.reps.map((rr, k) => (k === si ? e.target.value : rr)) })
+                            }
+                          />
+                        </label>
+                      ))}
+                      <div className="flex gap-1 pb-0.5">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="size-7"
+                          aria-label="Add a set"
+                          onClick={() => updateExercise(i, { reps: [...ex.reps, ''] })}
+                        >
+                          <Plus className="size-3.5" />
+                        </Button>
+                        {ex.reps.length > 1 && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="size-7"
+                            aria-label="Remove last set"
+                            onClick={() => updateExercise(i, { reps: ex.reps.slice(0, -1) })}
+                          >
+                            <Minus className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      <label className="ml-auto flex flex-col items-center gap-0.5">
+                        <span className="text-muted-foreground text-[9px]">Rest (s)</span>
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          max="3600"
+                          value={ex.restS}
+                          placeholder="90"
+                          className="h-8 w-14 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                          onChange={(e) => updateExercise(i, { restS: e.target.value })}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )
+              })}
+
+              <select
+                value=""
+                aria-label="Add an exercise"
+                className="border-input dark:bg-input/30 h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none"
+                onChange={(e) => {
+                  const key = e.target.value
+                  if (key) setExercises((xs) => [...xs, { key, reps: ['', '', ''], restS: '' }])
+                  e.target.value = ''
+                }}
+              >
+                <option value="">+ Add a machine or exercise…</option>
+                {[...new Set((catalog || []).map((c) => c.category))].map((cat) => (
+                  <optgroup key={cat} label={cat}>
+                    {catalog.filter((c) => c.category === cat).map((c) => (
+                      <option key={c.key} value={c.key}>{c.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          )}
 
           {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
 
@@ -375,6 +497,8 @@ export default function Workouts() {
       </section>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <MuscleRecoveryCard />
+        <div className="flex min-h-0 flex-col gap-3">
         <Card size="sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5 text-sm">
@@ -446,6 +570,7 @@ export default function Workouts() {
             </ChartContainer>
           </CardContent>
         </Card>
+        </div>
       </section>
 
       {personalRecords.length > 0 && (
