@@ -151,6 +151,12 @@ Rules:
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// One reservation per turnId while its turn is running, so a concurrent
+// duplicate (double-submit, impatient retry) is rejected instead of racing the
+// replay check and persisting twice. In-process is sufficient: the app is a
+// single Node process writing to one SQLite file.
+const activeTurns = new Set()
+
 // ── conversation history ─────────────────────────────────────────────────────
 router.get('/chat/conversations', (req, res) => res.json(listConversations(req.user.id)))
 
@@ -206,9 +212,10 @@ router.post('/chat', async (req, res) => {
   const turnId = typeof req.body?.turnId === 'string' ? req.body.turnId.slice(0, 64) : null
 
   res.setHeader('Content-Type', 'application/x-ndjson')
-  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Cache-Control', 'no-store')
   const emit = (obj) => res.write(`${JSON.stringify(obj)}\n`)
 
+  let reservedTurn = false
   try {
     if (turnId) {
       const prev = findAssistantTurn(req.user.id, turnId)
@@ -218,6 +225,12 @@ router.post('/chat', async (req, res) => {
         emit({ type: 'reply', text: prev.content, ms: meta?.ms ?? null, conversationId: prev.conversation_id, usage: null })
         return
       }
+      if (activeTurns.has(turnId)) {
+        emit({ type: 'error', error: 'This message is already being processed — wait for it to finish.' })
+        return
+      }
+      activeTurns.add(turnId)
+      reservedTurn = true
     }
 
     const t0 = Date.now()
@@ -290,6 +303,7 @@ router.post('/chat', async (req, res) => {
     log.error(`chat failed: ${err.message}`)
     emit({ type: 'error', error: err.message })
   } finally {
+    if (reservedTurn) activeTurns.delete(turnId)
     res.end()
   }
 })

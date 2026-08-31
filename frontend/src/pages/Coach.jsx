@@ -233,6 +233,7 @@ export default function Coach() {
     setHistoryOpen(false)
     if (id === activeId) return
     const gen = ++genRef.current
+    pendingTurnRef.current = null // retry ids belong to the thread they started in
     setActiveId(id)
     setError('')
     setBusy(false) // abandon any in-flight send; its completion is gen-guarded
@@ -258,6 +259,7 @@ export default function Coach() {
 
   function newChat() {
     genRef.current += 1
+    pendingTurnRef.current = null
     setHistoryOpen(false)
     setActiveId(null)
     setMessages([])
@@ -288,10 +290,10 @@ export default function Coach() {
     setSteps([])
     const gen = genRef.current
     const pending = pendingTurnRef.current
-    const turnId = pending?.content === content
+    const turnId = pending?.content === content && pending.conversationId === activeId
       ? pending.turnId
       : (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`)
-    pendingTurnRef.current = { turnId, content }
+    pendingTurnRef.current = { turnId, content, conversationId: activeId }
     const trail = []
     try {
       const reply = await api.chat(content, activeId, (label) => {

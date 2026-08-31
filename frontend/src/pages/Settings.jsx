@@ -554,7 +554,10 @@ export function SpotifyCard() {
                   size="sm"
                   variant="ghost"
                   className="text-muted-foreground"
-                  onClick={() => setShowCreds(false)}
+                  onClick={() => {
+                    setShowCreds(false)
+                    setCreds({ clientId: '', clientSecret: '' })
+                  }}
                 >
                   Cancel
                 </Button>

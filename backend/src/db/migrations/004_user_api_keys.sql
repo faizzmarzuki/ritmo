@@ -19,4 +19,8 @@ INSERT INTO user_api_keys (user_id, key, value)
   FROM app_settings
   WHERE EXISTS (SELECT 1 FROM users);
 
+-- Rows the owner absorbed are removed; anything left in app_settings_legacy was
+-- saved before any account existed and is kept for manual recovery only.
+DELETE FROM app_settings WHERE EXISTS (SELECT 1 FROM users);
+
 ALTER TABLE app_settings RENAME TO app_settings_legacy;

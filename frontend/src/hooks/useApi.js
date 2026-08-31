@@ -98,7 +98,13 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
     if (pending) {
       let alive = true
       pending.then(
-        (result) => alive && (setData(result), setLoading(false)),
+        (result) => {
+          if (!alive) return
+          // Same freshness rule as refetch: paint only what actually got cached,
+          // so a request outlived by logout (clearApiCache) never reaches state.
+          if (cache.get(k) === result) setData(result)
+          setLoading(false)
+        },
         (err) => alive && (setError(err), setLoading(false)),
       )
       return () => {
