@@ -4,9 +4,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { db, migrate } from '../src/db/index.js'
+import { config } from '../src/config.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
-const GIF_DIR = path.resolve('data/exercise-gifs')
+const GIF_DIR = path.join(config.dataDir, 'exercise-gifs')
+const FAILED_FILE = path.join(config.dataDir, 'exercise-scrape-failed.txt')
 fs.mkdirSync(GIF_DIR, { recursive: true })
 
 const urls = fs.readFileSync(process.argv[2], 'utf8').split(/\r?\n/).filter(Boolean)
@@ -40,8 +42,14 @@ function listAfter(html, headingRe) {
   return items.length && avg > 25 ? JSON.stringify(items) : null
 }
 
+function slugOf(url) {
+  const slug = new URL(url).pathname.replace(/\/$/, '').split('/').pop()
+  if (!/^[\w-]+$/.test(slug)) throw new Error(`unsafe slug "${slug}"`)
+  return slug
+}
+
 function parse(url, html) {
-  const slug = url.replace(/\/$/, '').split('/').pop()
+  const slug = slugOf(url)
   const name = strip((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || html.match(/property="og:title" content="([^"]+)"/) || [,''])[1])
     .replace(/:.*(Proper Form|How To|Guide).*$/i, '').replace(/\s*[:|–-]\s*(Proper Form|Muscles Worked|Benefits).*$/i, '').trim()
   const gif_url = (html.match(/property="og:image" content="([^"]+\.gif)"/) || [])[1]
@@ -89,17 +97,28 @@ async function worker(queue) {
   for (;;) {
     const url = queue.pop()
     if (!url) return
-    const slug = url.replace(/\/$/, '').split('/').pop()
+    let slug
+    try { slug = slugOf(url) } catch (e) { failed.push(url); console.error(`FAIL ${url}: ${e.message}`); continue }
     if (have.has(slug)) { done++; continue }
     try {
       const html = await get(url)
       const row = parse(url, html)
       if (row.gif_url) {
+        // Download to a temp file and rename so an interrupted write never
+        // leaves a truncated .gif that later runs would treat as complete.
         const gifFile = path.join(GIF_DIR, `${slug}.gif`)
-        if (!fs.existsSync(gifFile) || fs.statSync(gifFile).size === 0) {
-          fs.writeFileSync(gifFile, await get(row.gif_url, 'buf'))
+        try {
+          if (!fs.existsSync(gifFile) || fs.statSync(gifFile).size === 0) {
+            const tmp = `${gifFile}.tmp`
+            fs.writeFileSync(tmp, await get(row.gif_url, 'buf'))
+            fs.renameSync(tmp, gifFile)
+          }
+          row.gif_path = `data/exercise-gifs/${slug}.gif`
+        } catch (e) {
+          // Keep the parsed row (gif_path stays null → retried next run).
+          console.error(`GIF FAIL ${slug}: ${e.message}`)
+          failed.push(url)
         }
-        row.gif_path = `data/exercise-gifs/${slug}.gif`
       }
       upsert.run(row)
       done++
@@ -114,4 +133,5 @@ async function worker(queue) {
 const queue = [...urls]
 await Promise.all(Array.from({ length: 6 }, () => worker(queue)))
 console.log(`done: ${done} ok, ${failed.length} failed`)
-if (failed.length) fs.writeFileSync('data/exercise-scrape-failed.txt', failed.join('\n'))
+if (failed.length) fs.writeFileSync(FAILED_FILE, failed.join('\n'))
+else if (fs.existsSync(FAILED_FILE)) fs.unlinkSync(FAILED_FILE)
