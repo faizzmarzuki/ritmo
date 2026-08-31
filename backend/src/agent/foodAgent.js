@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { config } from '../config.js'
+import { config, visionBaseUrl } from '../config.js'
 import { sha256, randomId } from '../lib/crypto.js'
 import { request } from '../lib/http.js'
 import { saveAnalysis, findAnalysisByHash } from '../db/repo/nutrition.js'
@@ -91,9 +91,10 @@ function extractJson(text) {
 
 // ── provider adapters ─────────────────────────────────────────────────────────
 async function callOpenAI(b64, mime, userMsg, apiKey) {
-  const res = await request(`${config.vision.baseUrl}/chat/completions`, {
+  const res = await request(`${visionBaseUrl()}/chat/completions`, {
     method: 'POST',
     timeoutMs: 90_000,
+    redirect: 'error', // never follow a redirect carrying the API key
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: config.vision.model,
@@ -126,6 +127,7 @@ async function callAnthropic(b64, mime, userMsg, apiKey) {
   const res = await request('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     timeoutMs: 90_000,
+    redirect: 'error',
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
@@ -157,6 +159,7 @@ async function callGoogle(b64, mime, userMsg, apiKey) {
   const res = await request(url, {
     method: 'POST',
     timeoutMs: 90_000,
+    redirect: 'error',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
@@ -224,7 +227,12 @@ function sanitize(result) {
 export async function analyzeFoodPhoto(userId, imageBuffer, originalMime = 'image/jpeg', hint = '') {
   const apiKey = visionKeyFor(userId)
   if (config.vision.provider === 'disabled' || !apiKey) {
-    throw Object.assign(new Error('Food agent is not configured. Add your OpenAI API key in Settings → Integrations.'), { status: 503 })
+    const fix = config.vision.provider === 'disabled'
+      ? 'Set VISION_PROVIDER on the server to enable a vision provider.'
+      : config.vision.provider === 'openai'
+        ? 'Add your OpenAI API key in Settings → Integrations.'
+        : `Set VISION_API_KEY for the "${config.vision.provider}" provider on the server.`
+    throw Object.assign(new Error(`Food agent is not configured. ${fix}`), { status: 503 })
   }
 
   const memory = listFoodMemory(userId)
@@ -315,9 +323,10 @@ export async function estimateFoodByName(userId, name) {
   if (!apiKey) {
     throw Object.assign(new Error('Food estimates need an OpenAI API key. Add yours in Settings → Integrations.'), { status: 503 })
   }
-  const res = await request(`${config.vision.baseUrl}/chat/completions`, {
+  const res = await request(`${visionBaseUrl()}/chat/completions`, {
     method: 'POST',
     timeoutMs: 60_000,
+    redirect: 'error',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: config.vision.model,
@@ -333,7 +342,8 @@ export async function estimateFoodByName(userId, name) {
       ...(/^(gpt-5|o\d)/.test(config.vision.model) ? { reasoning_effort: 'low' } : {}),
     }),
   })
-  const text = res.data?.choices?.[0]?.message?.content ?? ''
+  const data = await res.json()
+  const text = data.choices?.[0]?.message?.content ?? ''
   const result = sanitize(extractJson(text))
   if (result.isFood) {
     try {

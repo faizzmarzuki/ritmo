@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/chart'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import EmptyState from '@/components/EmptyState'
 import { api } from '@/lib/api'
 import { useApi } from '@/hooks/useApi'
 import { useSettings } from '@/context/SettingsContext'
@@ -63,13 +64,13 @@ function WeightCard({ stats }) {
   if (currentWeight == null) {
     return (
       <Card size="sm">
-        <CardContent className="space-y-2">
-          <div className="bg-[var(--neon)]/10 text-[var(--neon)] flex size-8 items-center justify-center rounded-lg">
-            <Scale className="size-4" />
-          </div>
-          <p className="text-muted-foreground text-xs">
-            No weight logged yet — add one below or sync a smart scale via Garmin.
-          </p>
+        <CardContent>
+          <EmptyState
+            size="sm"
+            icon={Scale}
+            title="No weight logged yet"
+            description="Add your first entry below, or sync a smart scale through Garmin."
+          />
         </CardContent>
       </Card>
     )
@@ -312,7 +313,7 @@ function GoalsChecklist({ goals, onToggle }) {
 export default function Progress({ embedded = false }) {
   const { settings } = useSettings()
   const [newWeight, setNewWeight] = useState('')
-  const { data, refetch } = useApi(() => api.progress(), [], ['weight', 'hydration', 'goals', 'sync', 'nutrition', 'sleep', 'daily'])
+  const { data, refetch } = useApi(() => api.progress(), [], ['weight', 'hydration', 'goals', 'sync', 'nutrition', 'sleep', 'daily'], 'progress')
 
   const wrapClass = embedded ? 'space-y-4' : 'mx-auto w-full max-w-6xl space-y-4 p-4 md:p-6'
   if (!data) {
@@ -498,7 +499,12 @@ export default function Progress({ embedded = false }) {
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground text-xs">No Garmin sleep data yet.</p>
+              <EmptyState
+                size="sm"
+                icon={BedDouble}
+                title="No sleep data yet"
+                description="Connect Garmin in Settings to track your sleep debt."
+              />
             )}
           </CardContent>
         </Card>

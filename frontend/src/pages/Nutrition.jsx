@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/chart'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import EmptyState from '@/components/EmptyState'
 import { api } from '@/lib/api'
 import { useApi } from '@/hooks/useApi'
 
@@ -352,7 +353,7 @@ function AddFoodDialog({ open, onClose, onDone }) {
           </Button>
         </div>
         <form onSubmit={submit} className="space-y-2.5">
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pickFile} />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -401,8 +402,8 @@ export default function Nutrition() {
   const [openFood, setOpenFood] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
 
-  const { data: day, refetch } = useApi(() => api.nutrition(), [], ['nutrition', 'hydration'])
-  const { data: summary } = useApi(() => api.summary('today'), [], ['activity', 'daily', 'sync'])
+  const { data: day, refetch } = useApi(() => api.nutrition(), [], ['nutrition', 'hydration'], 'nutrition')
+  const { data: summary } = useApi(() => api.summary('today'), [], ['activity', 'daily', 'sync'], 'summary:today')
 
   async function onDeleteItem(id) {
     await api.deleteFoodItem(id)
@@ -412,7 +413,7 @@ export default function Nutrition() {
   if (!day) {
     return (
       <div className="mx-auto w-full max-w-6xl space-y-4 p-4 md:p-6">
-        <Skeleton className="h-10 w-full max-w-sm" />
+        <Skeleton className="h-7 w-full max-w-sm" />
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Skeleton className="h-48" />
           <Skeleton className="h-48" />
@@ -440,9 +441,11 @@ export default function Nutrition() {
 
       <section className="space-y-3">
         {day.meals.length === 0 && (
-          <p className="text-muted-foreground text-xs">
-            Nothing logged today — press “Add food”, snap your meal or type its name, and the AI does the rest.
-          </p>
+          <EmptyState
+            icon={UtensilsCrossed}
+            title="Nothing logged today"
+            description="Snap a photo of your meal or just type its name — the AI fills in the calories and macros."
+          />
         )}
         {Object.keys(SLOT_LABELS).map((slot) => (
           <SlotSection

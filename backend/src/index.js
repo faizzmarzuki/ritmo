@@ -70,7 +70,7 @@ const hasDist = fs.existsSync(path.join(distDir, 'index.html'))
 if (hasDist) {
   app.use(express.static(distDir))
   // SPA fallback for client-side routes; API 404s stay JSON.
-  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')))
+  app.get(/^\/(?!api(?:\/|$)).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')))
 }
 
 app.use((req, res) => res.status(404).json({ error: `No route ${req.method} ${req.path}` }))

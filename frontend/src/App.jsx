@@ -4,11 +4,13 @@ import LoginPage from './components/LoginPage.jsx'
 import AppShell from './components/AppShell.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import Workouts from './pages/Workouts.jsx'
+import Coach from './pages/Coach.jsx'
 import Nutrition from './pages/Nutrition.jsx'
 import You from './pages/You.jsx'
 import Settings from './pages/Settings.jsx'
 import { api } from './lib/api'
 import { stopLive } from './lib/live'
+import { clearApiCache } from './hooks/useApi'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -24,6 +26,7 @@ export default function App() {
 
   async function handleLogout() {
     stopLive()
+    clearApiCache()
     try {
       await api.logout()
     } catch {
@@ -51,6 +54,7 @@ export default function App() {
       >
         <Route index element={<Dashboard user={user} />} />
         <Route path="workouts" element={<Workouts />} />
+        <Route path="coach" element={<Coach />} />
         <Route path="nutrition" element={<Nutrition />} />
         <Route path="you" element={<You user={user} />} />
         <Route path="settings" element={<Settings onLogout={handleLogout} />} />

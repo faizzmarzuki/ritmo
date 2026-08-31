@@ -3,11 +3,19 @@ import path from 'node:path'
 import { config } from '../config.js'
 import { requireAuth } from '../auth/middleware.js'
 import { buildSummary, buildWorkouts, buildProgress, buildNutritionDay } from '../services/summary.js'
-import { listActivities, getActivity, getStream, addBodyComp, listBodyComp, insertHrSamples, latestHr } from '../db/repo/fitness.js'
+import {
+  listActivities, getActivity, getStream, upsertActivity, deleteActivity,
+  addBodyComp, listBodyComp, insertHrSamples, latestHr,
+} from '../db/repo/fitness.js'
+import { randomId } from '../lib/crypto.js'
 import {
   listMeals, createMeal, addFoodItem, deleteFoodItem, deleteMeal, addHydration,
 } from '../db/repo/nutrition.js'
 import { listGoals, setGoalDone } from '../db/repo/users.js'
+import {
+  replaceStrengthExercises, listStrengthExercises, listRecentStrengthWork,
+} from '../db/repo/strength.js'
+import { EXERCISES, EXERCISE_MAP, RECOVERY_HOURS } from '../lib/exercises.js'
 import { toDateKey } from '../lib/time.js'
 import { publish } from '../realtime/hub.js'
 
@@ -34,17 +42,130 @@ router.get('/activities', (req, res) => {
   }))
 })
 
+/**
+ * POST /api/activities — manually log a workout (gym sessions, mostly).
+ * Watch-recorded activities stream in from Garmin; this covers everything else.
+ */
+const MANUAL_SPORTS = new Set(['strength', 'run', 'ride', 'swim', 'walk', 'other'])
+const DEFAULT_NAMES = { strength: 'Gym workout', run: 'Run', ride: 'Ride', swim: 'Swim', walk: 'Walk', other: 'Workout' }
+
+router.post('/activities', (req, res) => {
+  const b = req.body || {}
+  const sport = b.sport || 'strength'
+  if (!MANUAL_SPORTS.has(sport)) {
+    return res.status(400).json({ error: `sport must be one of: ${[...MANUAL_SPORTS].join(', ')}` })
+  }
+  const durationMin = Number(b.durationMin)
+  if (!Number.isFinite(durationMin) || durationMin <= 0 || durationMin > 1440) {
+    return res.status(400).json({ error: 'durationMin must be 1-1440' })
+  }
+  const dateKey = dateKeyParam(b.date)
+  const time = /^\d{2}:\d{2}$/.test(String(b.time || '')) ? b.time : '12:00'
+  const startLocal = `${dateKey}T${time}:00`
+  // Round-trip through Date: impossible dates roll over (Feb 30 → Mar 2) and
+  // out-of-range times parse as Invalid Date — reject both instead of storing
+  // a shifted date or crashing on toISOString below.
+  const start = new Date(startLocal)
+  if (Number.isNaN(start.getTime())
+      || start.getDate() !== Number(dateKey.slice(8, 10))
+      || start.getHours() !== Number(time.slice(0, 2))) {
+    return res.status(400).json({ error: `Invalid date or time: ${startLocal}` })
+  }
+  const durationS = Math.round(durationMin * 60)
+  const distanceM = Math.max(0, Math.min(Number(b.distanceKm) || 0, 500)) * 1000
+  const avgHr = Math.round(Number(b.avgHr))
+  const { id } = upsertActivity(req.user.id, {
+    provider: 'manual',
+    externalId: randomId(8),
+    name: String(b.name || '').trim().slice(0, 80) || DEFAULT_NAMES[sport],
+    sport,
+    sportRaw: null,
+    startTime: start.toISOString(), // server-local tz — single-user deployment
+    startLocal,
+    dateKey,
+    timezone: null,
+    durationS,
+    movingS: durationS,
+    distanceM,
+    elevationM: 0,
+    calories: Math.max(0, Math.min(Math.round(Number(b.calories) || 0), 10000)),
+    avgHr: Number.isFinite(avgHr) && avgHr >= 25 && avgHr <= 250 ? avgHr : null,
+    maxHr: null,
+    avgSpeedMs: distanceM > 0 ? distanceM / durationS : null,
+    avgPaceSKm: distanceM > 0 ? durationS / (distanceM / 1000) : null,
+    steps: null,
+  })
+  // Optional gym detail: which machines/exercises, reps per set, rest between sets.
+  if (sport === 'strength' && Array.isArray(b.exercises)) {
+    const cleaned = b.exercises.slice(0, 30).map((ex) => ({
+      key: EXERCISE_MAP.has(ex?.key) ? ex.key : null,
+      restS: Math.max(0, Math.min(Math.round(Number(ex?.restS) || 0), 3600)) || null,
+      reps: (Array.isArray(ex?.reps) ? ex.reps : [])
+        .map((r) => Math.round(Number(r)))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 500)
+        .slice(0, 30),
+    })).filter((ex) => ex.key && ex.reps.length > 0)
+    if (cleaned.length) replaceStrengthExercises(req.user.id, id, cleaned)
+  }
+  publish(req.user.id, 'activity', { id })
+  res.status(201).json({ id })
+})
+
+router.delete('/activities/:id', (req, res) => {
+  const act = getActivity(req.user.id, req.params.id)
+  if (!act) return res.status(404).json({ error: 'Not found' })
+  if (act.provider !== 'manual') return res.status(400).json({ error: 'Only manually logged workouts can be deleted' })
+  deleteActivity(req.user.id, 'manual', act.external_id)
+  publish(req.user.id, 'activity', {})
+  res.json({ ok: true })
+})
+
 router.get('/activities/:id', (req, res) => {
   const act = getActivity(req.user.id, req.params.id)
   if (!act) return res.status(404).json({ error: 'Not found' })
   res.json({
     ...act,
+    exercises: listStrengthExercises(req.user.id, act.id).map((ex) => ({
+      ...ex,
+      label: EXERCISE_MAP.get(ex.key)?.label || ex.key,
+    })),
     streams: {
       heartrate: getStream(act.id, 'heartrate'),
       velocity: getStream(act.id, 'velocity'),
       altitude: getStream(act.id, 'altitude'),
     },
   })
+})
+
+// ── strength / muscle recovery ───────────────────────────────────────────────
+router.get('/strength/exercises', (req, res) => res.json(EXERCISES))
+
+/**
+ * GET /api/strength/recovery — freshness per muscle group for the anatomy card.
+ * intensity 1 = trained just now (renders red) fading linearly to 0 over
+ * RECOVERY_HOURS (white = fully recovered). Secondary muscles get ~60% of the
+ * stimulus, so they start orange instead of red.
+ */
+router.get('/strength/recovery', (req, res) => {
+  res.set('Cache-Control', 'no-store') // per-user and time-decaying — never reuse
+  const from = toDateKey(new Date(Date.now() - (RECOVERY_HOURS + 24) * 36e5))
+  const now = Date.now()
+  const muscles = {}
+  for (const row of listRecentStrengthWork(req.user.id, from)) {
+    const ex = EXERCISE_MAP.get(row.exercise_key)
+    if (!ex) continue
+    const hours = Math.max(0, (now - new Date(row.start_time).getTime()) / 36e5)
+    const decay = Math.max(0, 1 - hours / RECOVERY_HOURS)
+    if (decay <= 0) continue
+    const hit = (muscle, weight) => {
+      const cur = muscles[muscle] || (muscles[muscle] = { intensity: 0, lastWorked: row.date_key })
+      cur.intensity = Math.max(cur.intensity, Math.round(decay * weight * 1000) / 1000)
+      if (row.date_key > cur.lastWorked) cur.lastWorked = row.date_key
+    }
+    for (const m of ex.primary) hit(m, 1)
+    for (const m of ex.secondary) hit(m, 0.6)
+  }
+  res.json({ muscles, recoveryHours: RECOVERY_HOURS })
 })
 
 // ── live heart rate ──────────────────────────────────────────────────────────

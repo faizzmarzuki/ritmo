@@ -62,6 +62,7 @@
     --secondary-foreground: #111111;
     --muted: #f0f0f0;
     --muted-foreground: #666666;
+    --anatomy-outline: #484a68;
     --accent: #eefbe8;
     --accent-foreground: #14532d;
     --destructive: #dc2626;
@@ -98,6 +99,7 @@
     --secondary-foreground: #ededed;
     --muted: #1a1a1a;
     --muted-foreground: #9b9b9b;
+    --anatomy-outline: #767898;
     --accent: #15200e;
     --accent-foreground: #c9f7b8;
     --destructive: #ff4444;
@@ -135,4 +137,83 @@
   font-family: 'Oooh Baby', 'Geist Variable', cursive;
   font-weight: 400;
   letter-spacing: normal;
+}
+/* Native-app style page transitions (mobile only): forward = slide in from the
+   right, back = from the left. Applied by AppShell, keyed on the route. */
+@keyframes page-in-fwd {
+  from { opacity: 0.3; transform: translateX(26px); }
+  to   { opacity: 1;   transform: none; }
+}
+@keyframes page-in-back {
+  from { opacity: 0.3; transform: translateX(-26px); }
+  to   { opacity: 1;   transform: none; }
+}
+@media (max-width: 767px) {
+  .page-fwd  { animation: page-in-fwd  0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+  .page-back { animation: page-in-back 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-fwd, .page-back { animation: none; }
+}
+
+/* Hide scrollbars on touch devices (vertical and horizontal); scrolling still
+   works. Desktop keeps native scrollbars — use .no-scrollbar to opt in there. */
+@layer base {
+  @media (pointer: coarse) {
+    *,
+    html,
+    body {
+      scrollbar-width: none;      /* Firefox */
+      -ms-overflow-style: none;   /* legacy Edge/IE */
+    }
+    *::-webkit-scrollbar,
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;              /* Chrome/Safari/WebKit */
+    }
+  }
+}
+
+/* Explicit opt-in class (used by the sidebar) — same effect on any device. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* iOS Safari / standalone PWA scroll stability.
+   The scrollbar rules above already cover iOS (WebKit reads ::-webkit-scrollbar;
+   Safari 18.2+ also reads scrollbar-width) — iOS scrollbars are overlay, so they
+   never took layout space. These rules address the shifting that remains. */
+@layer base {
+  html {
+    /* Stop iOS inflating text (and reflowing the layout) on rotation. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  html,
+  body {
+    /* No rubber-band chaining to the document behind a nested scroller. */
+    overscroll-behavior-y: none;
+  }
+}
+
+/* black-translucent (index.html) keeps the standalone viewport stable but renders
+   the iOS status bar text white with no backdrop — illegible over the light theme.
+   Paint a dark scrim behind just the status-bar region in light mode; the height
+   is 0 outside standalone iOS, so this is invisible everywhere else. */
+html:not(.dark) body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: env(safe-area-inset-top, 0px);
+  background: rgb(10 10 10 / 0.82);
+  z-index: 999; /* above nav and dialogs — the status text overlays those too */
+  pointer-events: none;
 }

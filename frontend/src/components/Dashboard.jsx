@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/chart'
 import StatCard from '@/components/StatCard'
 import { Skeleton } from '@/components/ui/skeleton'
+import EmptyState from '@/components/EmptyState'
 import { api } from '@/lib/api'
 import { useApi } from '@/hooks/useApi'
 import { useBluetoothHr, useLiveBpm } from '@/hooks/useLiveHeartRate'
@@ -93,9 +94,11 @@ function NoDataCard({ icon: Icon, title, hint }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-muted-foreground text-xs">
-          {hint ?? 'No data yet — connect Garmin in Settings and it will appear here automatically.'}
-        </p>
+        <EmptyState
+          size="sm"
+          title="No data yet"
+          description={hint ?? 'Connect Garmin in Settings and this fills in automatically.'}
+        />
       </CardContent>
     </Card>
   )
@@ -542,12 +545,13 @@ export default function Dashboard() {
     () => api.summary(period),
     [period],
     ['activity', 'daily', 'sleep', 'nutrition', 'weight', 'bodyBattery', 'heartRate', 'metrics', 'sync'],
+    `summary:${period}`,
   )
 
   if (!data) {
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6">
-        <Skeleton className="h-10 w-full max-w-sm" />
+        <Skeleton className="h-7 w-full max-w-sm" />
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}
         </div>
