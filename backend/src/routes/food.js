@@ -10,8 +10,26 @@ import { visionEnabledFor } from '../services/apiKeys.js'
 import { one, run } from '../db/index.js'
 import { publish } from '../realtime/hub.js'
 import { logger } from '../lib/log.js'
+import { toDateKey } from '../lib/time.js'
 
 const log = logger('food')
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Which day a log lands on. The nutrition page can be browsing an earlier day;
+ * a past date gets a noon timestamp so the meal sorts sensibly within it.
+ * Future, impossible (Feb 30) or malformed dates fall back to today.
+ */
+function mealDate(raw) {
+  const today = toDateKey()
+  const value = String(raw || '')
+  const parsed = new Date(`${value}T12:00:00`)
+  const valid = DATE_RE.test(value) && !Number.isNaN(parsed.getTime()) && toDateKey(parsed) === value && value <= today
+  const dateKey = valid ? value : today
+  const eatenAt = dateKey === today ? new Date().toISOString() : parsed.toISOString()
+  return { dateKey, eatenAt }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -58,6 +76,7 @@ router.post('/analyze-and-log', upload.single('photo'), async (req, res) => {
     const hour = new Date().getHours()
     const slot = req.body?.slot || (hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 18 ? 'snack' : 'dinner')
     const mealId = createMeal(req.user.id, {
+      ...mealDate(req.body?.date),
       slot,
       name: result.dishName,
       note: req.body?.note || result.notes || null,
@@ -87,6 +106,7 @@ router.post('/log-by-name', async (req, res) => {
     const hour = new Date().getHours()
     const slot = req.body?.slot || (hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 18 ? 'snack' : 'dinner')
     const mealId = createMeal(req.user.id, {
+      ...mealDate(req.body?.date),
       slot,
       name: result.dishName,
       note: result.notes || null,

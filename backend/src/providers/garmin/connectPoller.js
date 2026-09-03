@@ -237,7 +237,10 @@ async function pollUser(conn) {
 
     try {
       const steps = await gc.getSteps(date)
-      if (Number.isFinite(steps)) upsertDaily(userId, dateKey, 'garmin', { steps })
+      if (Number.isFinite(steps)) {
+        upsertDaily(userId, dateKey, 'garmin', { steps })
+        publish(userId, 'daily', { dateKey, steps })
+      }
     } catch (err) {
       log.warn(`steps poll ${dateKey}: ${err.message}`)
     }

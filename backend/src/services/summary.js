@@ -511,6 +511,10 @@ function sweetDrinkHits(userId, dateKey) {
   `).all(userId, dateKey).filter((i) => SWEET_DRINK_RE.test(i.name || '') && (i.sugar ?? 0) >= 5)
 }
 
+/** Highest step count stored for the day — one row per provider, take the best. */
+const stepsOn = (userId, dateKey) =>
+  Math.max(0, ...getDaily(userId, dateKey, dateKey).map((d) => d.steps || 0))
+
 const GOAL_EVALUATORS = [
   {
     match: /sweet|sugar/i,
@@ -532,8 +536,16 @@ const GOAL_EVALUATORS = [
   {
     match: /step/i,
     check(userId, settings, dateKey) {
-      const steps = getDaily(userId, dateKey, dateKey)[0]?.steps ?? 0
-      return { done: steps >= 10_000, detail: `${steps.toLocaleString()} / 10,000 steps` }
+      const steps = stepsOn(userId, dateKey)
+      const done = steps >= 10_000
+      let detail = `${steps.toLocaleString()} / 10,000 steps`
+      // Early in the day today's row reads as "not done" — surface yesterday's
+      // count so a finished day is visibly still on the books.
+      if (!done && dateKey === toDateKey()) {
+        const yesterday = stepsOn(userId, addDays(dateKey, -1))
+        if (yesterday > 0) detail += ` · yesterday ${yesterday.toLocaleString()}`
+      }
+      return { done, detail }
     },
   },
   {
@@ -572,10 +584,17 @@ function autoStreak(evaluator, userId, settings, today, doneToday) {
 export function buildNutritionDay(userId, dateKey, listMealsFn) {
   const settings = getSettings(userId)
   const totals = nutritionTotals(userId, dateKey, dateKey)
+  // Same rule as the dashboard's "calories burned": wellness active calories,
+  // or the activities' own total when that is higher — for the day viewed.
+  const daily = getDaily(userId, dateKey, dateKey)
+  const acts = listActivities(userId, { from: dateKey, to: dateKey, limit: 1000 })
+  const burned = Math.round(Math.max(sum(daily, 'calories_active'), sum(acts, 'calories')))
   return {
     date: new Date(`${dateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
     dateKey,
+    isToday: dateKey === toDateKey(),
     calorieGoal: settings.calorieGoal,
+    burned,
     totals: {
       kcal: Math.round(totals.kcal), protein: Math.round(totals.protein), carbs: Math.round(totals.carbs),
       fat: Math.round(totals.fat), fiber: Math.round(totals.fiber), sugar: Math.round(totals.sugar),

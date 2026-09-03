@@ -126,14 +126,16 @@ export const api = {
     if (hint) form.append('hint', hint)
     return call('/api/food/analyze', { method: 'POST', body: form })
   },
-  analyzeAndLogFood: (file, slot, hint) => {
+  // date (YYYY-MM-DD) logs onto an earlier day the nutrition page is browsing.
+  analyzeAndLogFood: (file, slot, hint, date) => {
     const form = new FormData()
     form.append('photo', file)
     if (slot) form.append('slot', slot)
     if (hint) form.append('hint', hint)
+    if (date) form.append('date', date)
     return call('/api/food/analyze-and-log', { method: 'POST', body: form })
   },
-  logFoodByName: (name, slot) => call('/api/food/log-by-name', { method: 'POST', body: { name, slot } }),
+  logFoodByName: (name, slot, date) => call('/api/food/log-by-name', { method: 'POST', body: { name, slot, date } }),
   correctMeal: (mealId, name) => call(`/api/food/meals/${mealId}/correct`, { method: 'POST', body: { name } }),
   photoUrl: (photoPath) => `${BASE}/api/${photoPath}`,
 }
@@ -151,6 +153,14 @@ export function subscribeEvents(onEvent) {
     onEvent(type, data)
   }
   for (const t of types) source.addEventListener(t, handler(t))
+  // Events pushed while the connection was down are gone for good (a phone in
+  // the background drops it), so a reconnect is announced as its own event and
+  // every listener refetches.
+  let wasOpen = false
+  source.onopen = () => {
+    if (wasOpen) onEvent('reconnect', {})
+    wasOpen = true
+  }
   source.onerror = () => { /* EventSource auto-reconnects */ }
   return () => source.close()
 }

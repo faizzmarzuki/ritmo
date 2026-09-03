@@ -217,3 +217,12 @@ html:not(.dark) body::before {
   z-index: 999; /* above nav and dialogs — the status text overlays those too */
   pointer-events: none;
 }
+
+/* Scrollable but without a visible scrollbar — modal bodies and pickers. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

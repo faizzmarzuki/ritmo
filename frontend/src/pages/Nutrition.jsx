@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Beef, Camera, ChevronDown, Droplet, Droplets, Flame, Loader2, Plus, Trash2, UtensilsCrossed, Wheat, X } from 'lucide-react'
+import { Beef, CalendarDays, Camera, ChevronDown, ChevronLeft, ChevronRight, Droplet, Droplets, Flame, Loader2, Plus, Trash2, UtensilsCrossed, Wheat, X } from 'lucide-react'
 import { PolarAngleAxis, RadialBar, RadialBarChart } from 'recharts'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -148,6 +148,71 @@ function MacrosCard({ macros }) {
 
 const SLOT_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', snack: 'Snack', dinner: 'Dinner' }
 
+/** YYYY-MM-DD in the browser's local time — the same day-bucketing the server uses. */
+const todayKey = () => new Date().toLocaleDateString('sv-SE')
+const shiftDay = (key, n) => {
+  const d = new Date(`${key}T12:00:00`)
+  d.setDate(d.getDate() + n)
+  return d.toLocaleDateString('sv-SE')
+}
+const shortDay = (key) =>
+  new Date(`${key}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+
+/** Step a day at a time, or jump with the native date picker — never past today. */
+function DateNav({ date, onChange }) {
+  const pickerRef = useRef(null)
+  const today = todayKey()
+  const isToday = date === today
+  const label = isToday ? 'Today' : date === shiftDay(today, -1) ? 'Yesterday' : shortDay(date)
+
+  function openPicker() {
+    const el = pickerRef.current
+    if (!el) return
+    if (typeof el.showPicker === 'function') {
+      try {
+        el.showPicker()
+        return
+      } catch {
+        /* not allowed here — fall back to focusing the input */
+      }
+    }
+    el.focus()
+    el.click()
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Button size="icon" variant="outline" className="size-8" aria-label="Previous day" onClick={() => onChange(shiftDay(date, -1))}>
+        <ChevronLeft className="size-4" />
+      </Button>
+      <div className="relative">
+        <Button type="button" size="sm" variant="outline" className="h-8 min-w-[7.5rem] gap-1.5 text-xs" onClick={openPicker}>
+          <CalendarDays className="text-muted-foreground size-3.5" />
+          {label}
+        </Button>
+        <input
+          ref={pickerRef}
+          type="date"
+          value={date}
+          max={today}
+          tabIndex={-1}
+          aria-label="Pick a day"
+          onChange={(e) => e.target.value && e.target.value <= today && onChange(e.target.value)}
+          className="pointer-events-none absolute inset-0 -z-10 opacity-0"
+        />
+      </div>
+      <Button size="icon" variant="outline" className="size-8" aria-label="Next day" disabled={isToday} onClick={() => onChange(shiftDay(date, 1))}>
+        <ChevronRight className="size-4" />
+      </Button>
+      {!isToday && (
+        <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => onChange(today)}>
+          Today
+        </Button>
+      )}
+    </div>
+  )
+}
+
 function FoodRow({ food, photo, mealId, open, onToggle, onDelete, onCorrected }) {
   const [fixName, setFixName] = useState('')
   const [fixBusy, setFixBusy] = useState(false)
@@ -293,7 +358,7 @@ function SlotSection({ slot, meals, openFood, setOpenFood, onDeleteItem, onCorre
 }
 
 /** Claude-style add-food modal: photo and/or name in, AI-estimated macros out. */
-function AddFoodDialog({ open, onClose, onDone }) {
+function AddFoodDialog({ open, onClose, onDone, date, isToday }) {
   const [slot, setSlot] = useState('snack')
   const [name, setName] = useState('')
   const [file, setFile] = useState(null)
@@ -326,8 +391,9 @@ function AddFoodDialog({ open, onClose, onDone }) {
     setBusy(true)
     setError('')
     try {
-      if (file) await api.analyzeAndLogFood(file, slot, name.trim())
-      else await api.logFoodByName(name.trim(), slot)
+      const onDay = isToday ? undefined : date
+      if (file) await api.analyzeAndLogFood(file, slot, name.trim(), onDay)
+      else await api.logFoodByName(name.trim(), slot, onDay)
       setName('')
       setFile(null)
       if (preview) URL.revokeObjectURL(preview)
@@ -347,7 +413,10 @@ function AddFoodDialog({ open, onClose, onDone }) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => !busy && onClose()} />
       <div className="bg-card absolute top-1/2 left-1/2 w-[min(94vw,26rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-4 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Add food</h2>
+          <div>
+            <h2 className="text-sm font-semibold">Add food</h2>
+            {!isToday && <p className="text-muted-foreground text-[11px]">for {shortDay(date)}</p>}
+          </div>
           <Button size="icon" variant="ghost" className="size-7" onClick={onClose} disabled={busy} title="Close">
             <X className="size-4" />
           </Button>
@@ -401,9 +470,19 @@ function AddFoodDialog({ open, onClose, onDone }) {
 export default function Nutrition() {
   const [openFood, setOpenFood] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [date, setDate] = useState(todayKey)
+  const isToday = date === todayKey()
+  const dayLabel = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 
-  const { data: day, refetch } = useApi(() => api.nutrition(), [], ['nutrition', 'hydration'], 'nutrition')
-  const { data: summary } = useApi(() => api.summary('today'), [], ['activity', 'daily', 'sync'], 'summary:today')
+  // Today keeps the boot-time prefetch key; every other day gets its own slot,
+  // so stepping back to a day already seen repaints from cache. Burned
+  // calories ride along in the same response, for the day being viewed.
+  const { data: day, loading, refetch } = useApi(
+    () => api.nutrition(isToday ? undefined : date),
+    [date],
+    ['nutrition', 'hydration', 'activity', 'daily', 'sync'],
+    isToday ? 'nutrition' : `nutrition:${date}`,
+  )
 
   async function onDeleteItem(id) {
     await api.deleteFoodItem(id)
@@ -425,40 +504,55 @@ export default function Nutrition() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 p-4 md:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="page-title text-xl md:text-2xl">Nutrition</h1>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="page-title text-xl md:text-2xl">Nutrition</h1>
+          <DateNav date={date} onChange={(d) => { setDate(d); setOpenFood(null) }} />
+        </div>
         <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus data-icon="inline-start" />
           Add food
         </Button>
       </header>
 
-      <AddFoodDialog open={showAdd} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); refetch() }} />
+      <AddFoodDialog
+        open={showAdd}
+        date={date}
+        isToday={isToday}
+        onClose={() => setShowAdd(false)}
+        onDone={() => { setShowAdd(false); refetch() }}
+      />
 
-      <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <CalorieRingCard day={day} burned={summary?.stats.caloriesBurned.value ?? 0} />
-        <MacrosCard macros={day.macros} />
-      </section>
+      {/* The previous day stays painted while the next one loads — dimmed, so
+          the swap reads as a change of day rather than a flicker. */}
+      <div className={`space-y-4 transition-opacity ${loading ? 'opacity-60' : ''}`}>
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <CalorieRingCard day={day} burned={day.burned ?? 0} />
+          <MacrosCard macros={day.macros} />
+        </section>
 
-      <section className="space-y-3">
-        {day.meals.length === 0 && (
-          <EmptyState
-            icon={UtensilsCrossed}
-            title="Nothing logged today"
-            description="Snap a photo of your meal or just type its name — the AI fills in the calories and macros."
-          />
-        )}
-        {Object.keys(SLOT_LABELS).map((slot) => (
-          <SlotSection
-            key={slot}
-            slot={slot}
-            meals={day.meals.filter((m) => m.slot === slot)}
-            openFood={openFood}
-            setOpenFood={setOpenFood}
-            onDeleteItem={onDeleteItem}
-            onCorrected={refetch}
-          />
-        ))}
-      </section>
+        <section className="space-y-3">
+          {day.meals.length === 0 && (
+            <EmptyState
+              icon={UtensilsCrossed}
+              title={isToday ? 'Nothing logged today' : `Nothing logged on ${dayLabel}`}
+              description={isToday
+                ? 'Snap a photo of your meal or just type its name — the AI fills in the calories and macros.'
+                : 'Use Add food to fill in what you ate that day — it is saved to this date.'}
+            />
+          )}
+          {Object.keys(SLOT_LABELS).map((slot) => (
+            <SlotSection
+              key={slot}
+              slot={slot}
+              meals={day.meals.filter((m) => m.slot === slot)}
+              openFood={openFood}
+              setOpenFood={setOpenFood}
+              onDeleteItem={onDeleteItem}
+              onCorrected={refetch}
+            />
+          ))}
+        </section>
+      </div>
     </div>
   )
 }

@@ -140,7 +140,7 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
     const wanted = new Set(eventsKey.split(','))
     const t = throttleRef.current
     const off = onLive((type) => {
-      if (!wanted.has(type)) return
+      if (!wanted.has(type) && type !== 'reconnect') return
       const now = Date.now()
       const wait = t.last + THROTTLE_MS - now
       if (wait <= 0) {
@@ -160,6 +160,16 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
       t.timer = null
     }
   }, [eventsKey, refetch])
+
+  // A tab that was hidden — the app backgrounded on a phone — may have missed
+  // every event in the meantime, so refresh when it comes back into view.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refetch()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refetch])
 
   return { data, loading, error, refetch }
 }
