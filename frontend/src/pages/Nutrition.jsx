@@ -391,9 +391,8 @@ function AddFoodDialog({ open, onClose, onDone, date, isToday }) {
     setBusy(true)
     setError('')
     try {
-      const onDay = isToday ? undefined : date
-      if (file) await api.analyzeAndLogFood(file, slot, name.trim(), onDay)
-      else await api.logFoodByName(name.trim(), slot, onDay)
+      if (file) await api.analyzeAndLogFood(file, slot, name.trim(), date)
+      else await api.logFoodByName(name.trim(), slot, date)
       setName('')
       setFile(null)
       if (preview) URL.revokeObjectURL(preview)
@@ -474,14 +473,14 @@ export default function Nutrition() {
   const isToday = date === todayKey()
   const dayLabel = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 
-  // Today keeps the boot-time prefetch key; every other day gets its own slot,
-  // so stepping back to a day already seen repaints from cache. Burned
-  // calories ride along in the same response, for the day being viewed.
+  // Every day gets its own cache slot, so stepping back to a day already seen
+  // repaints from cache. Burned calories ride along in the same response, for
+  // the day being viewed.
   const { data: day, loading, refetch } = useApi(
-    () => api.nutrition(isToday ? undefined : date),
+    () => api.nutrition(date),
     [date],
     ['nutrition', 'hydration', 'activity', 'daily', 'sync'],
-    isToday ? 'nutrition' : `nutrition:${date}`,
+    `nutrition:${date}`,
   )
 
   async function onDeleteItem(id) {

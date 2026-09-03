@@ -60,8 +60,11 @@ export default function AppShell({ user }) {
   // content, which reads as the whole screen reloading.
   useEffect(() => {
     const warm = () => {
+      // Browser-local date, matching Nutrition's date-explicit fetch and cache
+      // key — a date-less prefetch would bucket by the server's timezone.
+      const day = new Date().toLocaleDateString('sv-SE')
       prefetchApi('workouts', () => api.workouts())
-      prefetchApi('nutrition', () => api.nutrition())
+      prefetchApi(`nutrition:${day}`, () => api.nutrition(day))
       prefetchApi('summary:today', () => api.summary('today'))
     }
     if (typeof requestIdleCallback === 'function') {

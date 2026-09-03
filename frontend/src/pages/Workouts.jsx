@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import {
   Activity,
   Bike,
@@ -162,7 +161,10 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
     : []
 
   function addExercise(e) {
-    setExercises((xs) => [...xs, { key: e.slug, name: e.name, hasGif: e.hasGif, reps: ['', '', ''], restS: '' }])
+    // Stable per-row identity — the same exercise can be added twice, and rows
+    // keyed by index would hand their ExerciseGif state to a neighbour on removal.
+    const uid = crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+    setExercises((xs) => [...xs, { uid, key: e.slug, name: e.name, hasGif: e.hasGif, reps: ['', '', ''], restS: '' }])
     setQuery('')
   }
 
@@ -211,19 +213,7 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
         onOpenChange(next)
       }}
     >
-      <DialogContent
-        className="gap-0"
-        // The GIF preview is portaled outside this box so it can fill the
-        // screen; a click or Escape there closes the preview, not the log.
-        onInteractOutside={(e) => {
-          if (e.target instanceof Element && e.target.closest('[data-gif-preview]')) e.preventDefault()
-        }}
-        onEscapeKeyDown={(e) => {
-          if (!preview) return
-          e.preventDefault()
-          setPreview(null)
-        }}
-      >
+      <DialogContent className="gap-0">
         <DialogHeader className="pr-10">
           <DialogTitle className="flex items-center gap-2">
             <Dumbbell className="size-4 text-[var(--neon)]" />
@@ -294,7 +284,7 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
 
             {/* In flow rather than floating: a dropdown would be clipped by the scroll area. */}
             {suggestionsOpen && (
-              <div className="no-scrollbar border-border/70 bg-popover max-h-64 overflow-y-auto rounded-lg border shadow-lg">
+              <div className="border-border/70 bg-popover rounded-lg border shadow-lg">
                 {results.map((e) => (
                   <div
                     key={e.slug}
@@ -326,7 +316,7 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
             )}
 
             {exercises.map((ex, i) => (
-              <div key={i} className="border-border/70 rounded-lg border p-2.5">
+              <div key={ex.uid} className="border-border/70 rounded-lg border p-2.5">
                 <div className="flex items-center gap-2.5">
                   <ExerciseGif
                     slug={ex.key}
@@ -413,35 +403,21 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
         </div>
       </DialogContent>
 
-      {preview && createPortal(
-        <div
-          role="dialog"
-          aria-label={`${preview.name} demo`}
-          data-gif-preview
-          className="pointer-events-auto fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
-          onClick={() => setPreview(null)}
-        >
-          <div
-            className="relative w-full max-w-sm rounded-xl bg-white p-3 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {/* Enlarged demo GIF as a nested dialog — Radix stacks it above the
+          logger and handles focus trapping, Escape and focus restoration. */}
+      {preview && (
+        <Dialog open onOpenChange={(next) => { if (!next) setPreview(null) }}>
+          <DialogContent className="w-[min(94vw,24rem)] gap-1 rounded-xl bg-white p-3 text-neutral-900">
             <img
               src={api.exerciseGifUrl(preview.slug)}
               alt={`${preview.name} demo`}
               className="aspect-square w-full object-contain"
             />
-            <p className="mt-1 text-center text-sm font-medium text-neutral-900">{preview.name}</p>
-            <button
-              type="button"
-              aria-label="Close preview"
-              onClick={() => setPreview(null)}
-              className="absolute top-2 right-2 rounded-full bg-black/10 p-1 text-neutral-700 hover:bg-black/20"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-        </div>,
-        document.body,
+            <DialogTitle className="mt-1 text-center text-sm font-medium text-neutral-900">
+              {preview.name}
+            </DialogTitle>
+          </DialogContent>
+        </Dialog>
       )}
     </Dialog>
   )

@@ -75,7 +75,15 @@ export function useApi(fetcher, deps = [], events = [], cacheKey) {
     try {
       setError(null)
       const k = keyRef.current
-      const result = await fetchFresh(k, () => fetcherRef.current())
+      let result = await fetchFresh(k, () => fetcherRef.current())
+      // Coalesce overlapping refreshes of one key (two cards refetching on the
+      // same SSE event): if a newer request superseded ours, follow it so every
+      // caller converges on the shared winner instead of one staying stale.
+      try {
+        for (let p = inflight.get(k), hops = 0; p && hops < 5; p = inflight.get(k), hops += 1) {
+          result = await p
+        }
+      } catch { /* the superseding request failed; fall back to our own result */ }
       // Paint only if this response is still the freshest for the key: an older
       // request resolving after a newer one (or after logout cleared the cache)
       // never made it into the cache, so it must not reach the screen either.
