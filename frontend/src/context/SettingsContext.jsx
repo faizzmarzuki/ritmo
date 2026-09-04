@@ -18,6 +18,9 @@ const DEFAULTS = {
   startWeight: null,
   goalWeight: null,
   heightCm: 178,
+  gearShoes: '',
+  gearWatch: '',
+  gearOther: '',
 }
 
 const SettingsContext = createContext(null)

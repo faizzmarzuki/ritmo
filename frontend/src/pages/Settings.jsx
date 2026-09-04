@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Camera, KeyRound, Loader2, LogOut, RefreshCw, Trash2, UserRound, X } from 'lucide-react'
+import { Backpack, Camera, Footprints, KeyRound, Loader2, LogOut, RefreshCw, Trash2, UserRound, Watch, X } from 'lucide-react'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -101,6 +101,45 @@ export function ProfileCard() {
           <span>Data storage</span>
           <span className="text-right font-medium text-foreground">Local backend (SQLite)</span>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+const GEAR_FIELDS = [
+  { key: 'gearShoes', label: 'Running shoes', icon: Footprints, placeholder: 'e.g. Nike Pegasus 41' },
+  { key: 'gearWatch', label: 'Watch', icon: Watch, placeholder: 'e.g. Garmin Forerunner 265' },
+  { key: 'gearOther', label: 'Other gear', icon: Backpack, placeholder: 'e.g. bike, headphones, lifting belt' },
+]
+
+/** What you train with — free text, saved with the rest of your settings. */
+export function GearCard() {
+  const { settings, update } = useSettings()
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-1.5 text-sm">
+          <Backpack className="size-4" />
+          Gear
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {GEAR_FIELDS.map(({ key, label, icon: Icon, placeholder }) => (
+          <div key={key} className="space-y-1.5">
+            <label htmlFor={key} className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
+              <Icon className="size-3.5" />
+              {label}
+            </label>
+            <Input
+              id={key}
+              value={settings[key] ?? ''}
+              onChange={(e) => update({ [key]: e.target.value })}
+              placeholder={placeholder}
+              maxLength={80}
+            />
+          </div>
+        ))}
       </CardContent>
     </Card>
   )
@@ -757,6 +796,7 @@ export default function Settings({ onLogout }) {
             <ProfileCard />
           </div>
           <div className="space-y-3">
+            <GearCard />
             <SessionCard onLogout={onLogout} />
           </div>
         </section>

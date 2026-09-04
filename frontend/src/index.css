@@ -176,7 +176,8 @@
   }
 }
 
-/* Explicit opt-in class (used by the sidebar) — same effect on any device. */
+/* Explicit opt-in class (sidebar, modal bodies, pickers) — scrollable but
+   without a visible scrollbar; same effect on any device. */
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;

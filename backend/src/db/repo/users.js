@@ -18,6 +18,10 @@ export const DEFAULT_SETTINGS = {
   goalWeight: null,
   heightCm: 178,
   avatar: null,
+  // gear — free text, edited in Settings › General
+  gearShoes: '',
+  gearWatch: '',
+  gearOther: '',
 }
 
 const SEED_GOALS = [

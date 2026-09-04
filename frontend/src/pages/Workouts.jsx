@@ -34,12 +34,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   ChartContainer,
   ChartTooltip,
@@ -128,7 +128,7 @@ function ExerciseGif({ slug, hasGif, className = '', onPreview }) {
 }
 
 /**
- * Manual workout logger (bottom sheet) — mainly for gym sessions the watch
+ * Manual workout logger (centered modal) — mainly for gym sessions the watch
  * didn't record. Watch activities (incl. strength) sync in from Garmin.
  */
 function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
@@ -161,7 +161,10 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
     : []
 
   function addExercise(e) {
-    setExercises((xs) => [...xs, { key: e.slug, name: e.name, hasGif: e.hasGif, reps: ['', '', ''], restS: '' }])
+    // Stable per-row identity — the same exercise can be added twice, and rows
+    // keyed by index would hand their ExerciseGif state to a neighbour on removal.
+    const uid = crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+    setExercises((xs) => [...xs, { uid, key: e.slug, name: e.name, hasGif: e.hasGif, reps: ['', '', ''], restS: '' }])
     setQuery('')
   }
 
@@ -203,28 +206,30 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
   }
 
   return (
-    <Sheet
+    <Dialog
       open={open}
       onOpenChange={(next) => {
         if (!next) setPreview(null) // don't reopen onto a stale overlay
         onOpenChange(next)
       }}
     >
-      <SheetContent
-        side="bottom"
-        className="mx-auto max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-md"
-      >
-        <SheetHeader className="pb-0">
-          <SheetTitle className="flex items-center gap-2">
+      <DialogContent className="gap-0">
+        <DialogHeader className="pr-10">
+          <DialogTitle className="flex items-center gap-2">
             <Dumbbell className="size-4 text-[var(--neon)]" />
             Log a workout
-          </SheetTitle>
-          <SheetDescription className="text-xs">
+          </DialogTitle>
+          <DialogDescription className="text-xs">
             Pick your machines & exercises and log reps per set — the muscle recovery map updates automatically.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
-        <form className="flex flex-col gap-3 px-4" onSubmit={submit}>
+        {/* One scroll area with its scrollbar hidden; the submit row stays put underneath. */}
+        <form
+          id="log-workout-form"
+          className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4"
+          onSubmit={submit}
+        >
           <div className="grid grid-cols-2 gap-3">
             <Field label="Name (optional)">
               <Input
@@ -240,197 +245,181 @@ function LogWorkoutSheet({ open, onOpenChange, onLogged }) {
           </div>
 
           <div className="flex flex-col gap-2">
-              <span className="text-muted-foreground text-[11px] font-medium">
-                Machines & exercises — reps per set & rest
-              </span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              Machines & exercises — reps per set & rest
+            </span>
 
-              <div className="relative">
-                <Search className="text-muted-foreground pointer-events-none absolute top-2 left-2.5 size-4" />
-                <Input
-                  ref={searchRef}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  placeholder="Search machines & exercises…"
-                  aria-label="Search machines and exercises"
-                  style={{ paddingLeft: '2rem' }} // the Input's own px sets padding-inline, which beats a pl-* class
-                />
-                {suggestionsOpen && (
-                  <div className="border-border/70 bg-popover absolute top-full right-0 left-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg">
-                    {results.map((e) => (
-                      <div
-                        key={e.slug}
-                        className="hover:bg-muted/50 border-border/40 flex w-full items-center gap-2.5 border-b p-2 last:border-b-0"
-                      >
-                        <ExerciseGif
-                          slug={e.slug}
-                          hasGif={e.hasGif}
-                          onPreview={() => setPreview({ slug: e.slug, name: e.name })}
-                          className="size-10"
-                        />
-                        <button
-                          type="button"
-                          onMouseDown={(ev) => ev.preventDefault()}
-                          onClick={() => addExercise(e)}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <p className="truncate text-xs font-medium">{e.name}</p>
-                          <p className="text-muted-foreground truncate text-[10px]">{e.muscles.join(' · ')}</p>
-                        </button>
-                      </div>
-                    ))}
-                    {results.length === 0 && (
-                      <p className="text-muted-foreground p-3 text-center text-xs">
-                        {library ? 'No exercises match your search.' : 'Loading exercise library…'}
-                      </p>
-                    )}
+            <div className="relative">
+              <Search className="text-muted-foreground pointer-events-none absolute top-2 left-2.5 size-4" />
+              <Input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder="Search machines & exercises…"
+                aria-label="Search machines and exercises"
+                style={{ paddingLeft: '2rem' }} // the Input's own px sets padding-inline, which beats a pl-* class
+              />
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {EQUIP_FILTERS.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setEquip(value)
+                    searchRef.current?.focus()
+                  }}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                    equip === value
+                      ? 'border-[var(--neon)]/40 bg-[var(--neon)]/10 text-[var(--neon)]'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* In flow rather than floating: a dropdown would be clipped by the scroll area. */}
+            {suggestionsOpen && (
+              <div className="border-border/70 bg-popover rounded-lg border shadow-lg">
+                {results.map((e) => (
+                  <div
+                    key={e.slug}
+                    className="hover:bg-muted/50 border-border/40 flex w-full items-center gap-2.5 border-b p-2 last:border-b-0"
+                  >
+                    <ExerciseGif
+                      slug={e.slug}
+                      hasGif={e.hasGif}
+                      onPreview={() => setPreview({ slug: e.slug, name: e.name })}
+                      className="size-10"
+                    />
+                    <button
+                      type="button"
+                      onMouseDown={(ev) => ev.preventDefault()}
+                      onClick={() => addExercise(e)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <p className="truncate text-xs font-medium">{e.name}</p>
+                      <p className="text-muted-foreground truncate text-[10px]">{e.muscles.join(' · ')}</p>
+                    </button>
                   </div>
+                ))}
+                {results.length === 0 && (
+                  <p className="text-muted-foreground p-3 text-center text-xs">
+                    {library ? 'No exercises match your search.' : 'Loading exercise library…'}
+                  </p>
                 )}
               </div>
-              <div className="flex flex-wrap gap-1">
-                {EQUIP_FILTERS.map(([value, label]) => (
+            )}
+
+            {exercises.map((ex, i) => (
+              <div key={ex.uid} className="border-border/70 rounded-lg border p-2.5">
+                <div className="flex items-center gap-2.5">
+                  <ExerciseGif
+                    slug={ex.key}
+                    hasGif={ex.hasGif}
+                    onPreview={() => setPreview({ slug: ex.key, name: ex.name })}
+                    className="size-12"
+                  />
+                  <p className="min-w-0 flex-1 truncate text-xs font-semibold">{ex.name}</p>
                   <button
-                    key={value}
                     type="button"
-                    onClick={() => {
-                      setEquip(value)
-                      searchRef.current?.focus()
-                    }}
-                    className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
-                      equip === value
-                        ? 'border-[var(--neon)]/40 bg-[var(--neon)]/10 text-[var(--neon)]'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    aria-label="Remove exercise"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setExercises((xs) => xs.filter((_, j) => j !== i))}
                   >
-                    {label}
+                    <X className="size-3.5" />
                   </button>
-                ))}
-              </div>
-
-              {exercises.length > 0 && (
-              <div className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto pr-0.5">
-              {exercises.map((ex, i) => {
-                return (
-                  <div key={i} className="border-border/70 rounded-lg border p-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <ExerciseGif
-                        slug={ex.key}
-                        hasGif={ex.hasGif}
-                        onPreview={() => setPreview({ slug: ex.key, name: ex.name })}
-                        className="size-12"
+                </div>
+                <div className="mt-2 flex flex-wrap items-end gap-1.5">
+                  {ex.reps.map((r, si) => (
+                    <label key={si} className="flex flex-col items-center gap-0.5">
+                      <span className="text-muted-foreground text-[9px]">Set {si + 1}</span>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        max="200"
+                        value={r}
+                        placeholder="10"
+                        className="h-8 w-12 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                        onChange={(e) =>
+                          updateExercise(i, { reps: ex.reps.map((rr, k) => (k === si ? e.target.value : rr)) })
+                        }
                       />
-                      <p className="min-w-0 flex-1 truncate text-xs font-semibold">{ex.name}</p>
-                      <button
+                    </label>
+                  ))}
+                  <div className="flex gap-1 pb-0.5">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="size-7"
+                      aria-label="Add a set"
+                      onClick={() => updateExercise(i, { reps: [...ex.reps, ''] })}
+                    >
+                      <Plus className="size-3.5" />
+                    </Button>
+                    {ex.reps.length > 1 && (
+                      <Button
                         type="button"
-                        aria-label="Remove exercise"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setExercises((xs) => xs.filter((_, j) => j !== i))}
+                        size="icon"
+                        variant="outline"
+                        className="size-7"
+                        aria-label="Remove last set"
+                        onClick={() => updateExercise(i, { reps: ex.reps.slice(0, -1) })}
                       >
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-end gap-1.5">
-                      {ex.reps.map((r, si) => (
-                        <label key={si} className="flex flex-col items-center gap-0.5">
-                          <span className="text-muted-foreground text-[9px]">Set {si + 1}</span>
-                          <Input
-                            type="number"
-                            inputMode="numeric"
-                            min="1"
-                            max="200"
-                            value={r}
-                            placeholder="10"
-                            className="h-8 w-12 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
-                            onChange={(e) =>
-                              updateExercise(i, { reps: ex.reps.map((rr, k) => (k === si ? e.target.value : rr)) })
-                            }
-                          />
-                        </label>
-                      ))}
-                      <div className="flex gap-1 pb-0.5">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="outline"
-                          className="size-7"
-                          aria-label="Add a set"
-                          onClick={() => updateExercise(i, { reps: [...ex.reps, ''] })}
-                        >
-                          <Plus className="size-3.5" />
-                        </Button>
-                        {ex.reps.length > 1 && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="size-7"
-                            aria-label="Remove last set"
-                            onClick={() => updateExercise(i, { reps: ex.reps.slice(0, -1) })}
-                          >
-                            <Minus className="size-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                      <label className="ml-auto flex flex-col items-center gap-0.5">
-                        <span className="text-muted-foreground text-[9px]">Rest (s)</span>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          min="0"
-                          max="3600"
-                          value={ex.restS}
-                          placeholder="90"
-                          className="h-8 w-14 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
-                          onChange={(e) => updateExercise(i, { restS: e.target.value })}
-                        />
-                      </label>
-                    </div>
+                        <Minus className="size-3.5" />
+                      </Button>
+                    )}
                   </div>
-                )
-              })}
-
+                  <label className="ml-auto flex flex-col items-center gap-0.5">
+                    <span className="text-muted-foreground text-[9px]">Rest (s)</span>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      max="3600"
+                      value={ex.restS}
+                      placeholder="90"
+                      className="h-8 w-14 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                      onChange={(e) => updateExercise(i, { restS: e.target.value })}
+                    />
+                  </label>
+                </div>
               </div>
-              )}
+            ))}
           </div>
-
-          {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
-
-          <Button type="submit" disabled={busy || exercises.length === 0} className="w-full">
-            {busy ? <Loader2 className="size-4 animate-spin" /> : 'Log workout'}
-          </Button>
         </form>
 
-        {preview && (
-          <div
-            role="dialog"
-            aria-label={`${preview.name} demo`}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
-            onClick={() => setPreview(null)}
-          >
-            <div
-              className="relative w-full max-w-sm rounded-xl bg-white p-3 shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img
-                src={api.exerciseGifUrl(preview.slug)}
-                alt={`${preview.name} demo`}
-                className="aspect-square w-full object-contain"
-              />
-              <p className="mt-1 text-center text-sm font-medium text-neutral-900">{preview.name}</p>
-              <button
-                type="button"
-                aria-label="Close preview"
-                onClick={() => setPreview(null)}
-                className="absolute top-2 right-2 rounded-full bg-black/10 p-1 text-neutral-700 hover:bg-black/20"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+        <div className="border-t p-4">
+          {error && <p className="text-destructive mb-2 text-xs" role="alert">{error}</p>}
+          <Button type="submit" form="log-workout-form" disabled={busy || exercises.length === 0} className="w-full">
+            {busy ? <Loader2 className="size-4 animate-spin" /> : 'Log workout'}
+          </Button>
+        </div>
+      </DialogContent>
+
+      {/* Enlarged demo GIF as a nested dialog — Radix stacks it above the
+          logger and handles focus trapping, Escape and focus restoration. */}
+      {preview && (
+        <Dialog open onOpenChange={(next) => { if (!next) setPreview(null) }}>
+          <DialogContent className="w-[min(94vw,24rem)] gap-1 rounded-xl bg-white p-3 text-neutral-900">
+            <img
+              src={api.exerciseGifUrl(preview.slug)}
+              alt={`${preview.name} demo`}
+              className="aspect-square w-full object-contain"
+            />
+            <DialogTitle className="mt-1 text-center text-sm font-medium text-neutral-900">
+              {preview.name}
+            </DialogTitle>
+          </DialogContent>
+        </Dialog>
+      )}
+    </Dialog>
   )
 }
 

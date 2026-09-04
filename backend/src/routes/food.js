@@ -10,8 +10,40 @@ import { visionEnabledFor } from '../services/apiKeys.js'
 import { one, run } from '../db/index.js'
 import { publish } from '../realtime/hub.js'
 import { logger } from '../lib/log.js'
+import { toDateKey } from '../lib/time.js'
 
 const log = logger('food')
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Which day a log lands on. The nutrition page can be browsing an earlier day;
+ * a non-today date gets a noon timestamp so the meal sorts sensibly within it.
+ * Omitted date defaults to today; malformed, impossible (Feb 30) or too-far-future
+ * dates are rejected with a 400.
+ */
+function mealDate(raw) {
+  const today = toDateKey()
+  const value = String(raw || '')
+  if (!value) return { dateKey: today, eatenAt: new Date().toISOString() }
+  const parsed = new Date(`${value}T12:00:00`)
+  if (!DATE_RE.test(value) || Number.isNaN(parsed.getTime()) || toDateKey(parsed) !== value) {
+    const err = new Error(`Invalid date "${value}" — expected a real calendar date as YYYY-MM-DD.`)
+    err.status = 400
+    throw err
+  }
+  // Allow one day past server-local today: a browser across the date line can
+  // legitimately be on "tomorrow" from the server's point of view.
+  const max = new Date(`${today}T12:00:00`)
+  max.setDate(max.getDate() + 1)
+  if (value > toDateKey(max)) {
+    const err = new Error(`Date "${value}" is in the future.`)
+    err.status = 400
+    throw err
+  }
+  const eatenAt = value === today ? new Date().toISOString() : parsed.toISOString()
+  return { dateKey: value, eatenAt }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -58,6 +90,7 @@ router.post('/analyze-and-log', upload.single('photo'), async (req, res) => {
     const hour = new Date().getHours()
     const slot = req.body?.slot || (hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 18 ? 'snack' : 'dinner')
     const mealId = createMeal(req.user.id, {
+      ...mealDate(req.body?.date),
       slot,
       name: result.dishName,
       note: req.body?.note || result.notes || null,
@@ -87,6 +120,7 @@ router.post('/log-by-name', async (req, res) => {
     const hour = new Date().getHours()
     const slot = req.body?.slot || (hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 18 ? 'snack' : 'dinner')
     const mealId = createMeal(req.user.id, {
+      ...mealDate(req.body?.date),
       slot,
       name: result.dishName,
       note: result.notes || null,
